@@ -1,0 +1,38 @@
+# 本地开发 Profile - 连接 docker-compose 启动的中间件
+# 使用方式：
+#   1. 先 cd 到项目根，执行 docker compose up -d
+#   2. 确保 .env 已按需修改密码
+#   3. 运行后端时带上此 profile： --spring.profiles.active=local
+#      或 IDE Run Configuration 设置 SPRING_PROFILES_ACTIVE=local
+#      或直接 java -jar -Dspring.profiles.active=local xxx.jar
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${POSTGRES_DB:iov_platform}
+    username: ${POSTGRES_USER:iov_admin}
+    password: ${POSTGRES_PASSWORD:change_me_pg_123}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:change_me_redis_123}
+      timeout: 5000ms
+      connect-timeout: 5000ms
+
+  # MQTT Broker (EMQX)
+  mqtt:
+    url: tcp://localhost:1883
+    username: ${EMQX_MQTT_USERNAME:}
+    password: ${EMQX_MQTT_PASSWORD:}
+    client-id: vehicle-telemetry-backend-${random.uuid}
+    default-topic: vehicle/+/telemetry
+
+  # MyBatis-Plus: 本地开发打印 SQL 日志
+  mybatis-plus:
+    configuration:
+      log-impl: org.apache.ibatis.logging.stdout.StdOutImpl

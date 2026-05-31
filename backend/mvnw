@@ -1,0 +1,19 @@
+#!/bin/sh
+# Maven Wrapper script
+# https://maven.apache.org/wrapper/
+
+set -e
+
+if [ -z "$JAVA_HOME" ] ; then
+  JAVACMD="java"
+else
+  JAVACMD="$JAVA_HOME/bin/java"
+fi
+
+WRAPPER_JAR="$(dirname "$0")/.mvn/wrapper/maven-wrapper.jar"
+WRAPPER_PROPERTIES="$(dirname "$0")/.mvn/wrapper/maven-wrapper.properties"
+
+exec "$JAVACMD" \
+  $MAVEN_OPTS \
+  -jar "$WRAPPER_JAR" \
+  "$@"
