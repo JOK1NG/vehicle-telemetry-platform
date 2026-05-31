@@ -1,0 +1,249 @@
+package com.iov.platform.modules.realtime.service;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.iov.platform.modules.realtime.dto.TelemetryMessage;
+import com.iov.platform.modules.realtime.dto.VehicleUpdateMessage;
+import jakarta.annotation.PreDestroy;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.integration.mqtt.support.MqttHeaders;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.stereotype.Service;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * 实时遥测处理服务
+ * MQTT 消息 -> Redis 实时态 -> DB 持久化 -> WebSocket 广播
+ */
+@Service
+@Slf4j
+public class RealtimeService {
+
+    private final StringRedisTemplate redis;
+    private final JdbcTemplate jdbcTemplate;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final ObjectMapper objectMapper;
+
+    /** 500ms 节流缓冲区。swap 引用避免与 flush 竞态 */
+    private volatile Map<Long, VehicleUpdateMessage> buffer = new LinkedHashMap<>();
+
+    private final ScheduledExecutorService scheduler =
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "ws-flush");
+                t.setDaemon(true);
+                return t;
+            });
+
+    public RealtimeService(StringRedisTemplate redis,
+                           JdbcTemplate jdbcTemplate,
+                           SimpMessagingTemplate messagingTemplate,
+                           ObjectMapper objectMapper) {
+        this.redis = redis;
+        this.jdbcTemplate = jdbcTemplate;
+        this.messagingTemplate = messagingTemplate;
+        this.objectMapper = objectMapper;
+
+        // 每 500ms flush 缓冲区 (修复竞态: swap 模式)
+        scheduler.scheduleAtFixedRate(this::flushBuffer, 500, 500, TimeUnit.MILLISECONDS);
+
+        // 每 30s 清理 vehicle:online 集合中的过期车辆 (修复 #4)
+        scheduler.scheduleAtFixedRate(this::cleanStaleOnlineSet, 30, 30, TimeUnit.SECONDS);
+    }
+
+    /**
+     * 处理一条 MQTT 遥测消息
+     */
+    public void handleTelemetry(Message<?> message) {
+        String topic = (String) message.getHeaders().get(MqttHeaders.RECEIVED_TOPIC);
+        String payload = (String) message.getPayload();
+
+        if (topic == null || payload == null) {
+            log.warn("MQTT 消息缺少 topic 或 payload");
+            return;
+        }
+
+        Long vehicleId = extractVehicleId(topic);
+        if (vehicleId == null) {
+            log.warn("无法从 topic 解析 vehicleId: {}", topic);
+            return;
+        }
+
+        TelemetryMessage tm;
+        try {
+            tm = objectMapper.readValue(payload, TelemetryMessage.class);
+        } catch (JsonProcessingException e) {
+            log.warn("遥测 JSON 解析失败 vehicleId={}: {}", vehicleId, e.getMessage());
+            return;
+        }
+
+        // 字段范围校验 (修复 #8)
+        if (!isValidTelemetry(tm, vehicleId)) {
+            return;  // 具体日志已在 isValidTelemetry 中输出
+        }
+
+        // 时间戳解析 — 失败则拒绝消息 (修复 #9)
+        OffsetDateTime ts = parseTs(tm.getTs());
+        if (ts == null) {
+            log.warn("遥测时间戳无效 vehicleId={} ts={}", vehicleId, tm.getTs());
+            return;
+        }
+
+        // 1. 写 Redis 实时态
+        String rtKey = "vehicle:rt:" + vehicleId;
+        Map<String, String> rtData = new LinkedHashMap<>();
+        rtData.put("lng", String.valueOf(tm.getLng()));
+        rtData.put("lat", String.valueOf(tm.getLat()));
+        rtData.put("speed", String.valueOf(tm.getSpeed()));
+        rtData.put("heading", String.valueOf(tm.getHeading()));
+        rtData.put("battery", String.valueOf(tm.getBattery()));
+        rtData.put("ts", tm.getTs());
+        redis.opsForHash().putAll(rtKey, rtData);
+        redis.expire(rtKey, Duration.ofSeconds(10));
+
+        // 2. 标记在线
+        redis.opsForSet().add("vehicle:online", String.valueOf(vehicleId));
+
+        // 3. 写 telemetry 表 (含 geom 字段, 修复 #6)
+        try {
+            jdbcTemplate.update(
+                    "INSERT INTO telemetry (time, vehicle_id, lng, lat, speed, heading, battery, fault_code, geom) "
+                  + "VALUES (?::timestamptz, ?, ?, ?, ?, ?, ?, ?, "
+                  + "ST_SetSRID(ST_MakePoint(?, ?), 4326))",
+                    ts, vehicleId, tm.getLng(), tm.getLat(),
+                    tm.getSpeed(), tm.getHeading(), tm.getBattery(), tm.getFaultCode(),
+                    tm.getLng(), tm.getLat()
+            );
+        } catch (Exception e) {
+            log.error("写入 telemetry 表失败 vehicleId={}: {}", vehicleId, e.getMessage());
+        }
+
+        // 4. 放入节流缓冲区
+        buffer.put(vehicleId, new VehicleUpdateMessage(
+                vehicleId, tm.getLng(), tm.getLat(), tm.getSpeed(),
+                tm.getHeading(), tm.getBattery(), 1
+        ));
+
+        log.debug("收到遥测 vehicleId={} speed={} battery={}", vehicleId, tm.getSpeed(), tm.getBattery());
+    }
+
+    // ---- 字段校验 (修复 #8) ----
+
+    private boolean isValidTelemetry(TelemetryMessage tm, Long vehicleId) {
+        if (tm.getLng() < -180 || tm.getLng() > 180) {
+            log.warn("遥测经度越界 vehicleId={} lng={}", vehicleId, tm.getLng());
+            return false;
+        }
+        if (tm.getLat() < -90 || tm.getLat() > 90) {
+            log.warn("遥测纬度越界 vehicleId={} lat={}", vehicleId, tm.getLat());
+            return false;
+        }
+        if (tm.getSpeed() < 0) {
+            log.warn("遥测速度负值 vehicleId={} speed={}", vehicleId, tm.getSpeed());
+            return false;
+        }
+        if (tm.getBattery() < 0 || tm.getBattery() > 100) {
+            log.warn("遥测电量越界 vehicleId={} battery={}", vehicleId, tm.getBattery());
+            return false;
+        }
+        if (tm.getHeading() < 0 || tm.getHeading() > 360) {
+            log.warn("遥测航向越界 vehicleId={} heading={}", vehicleId, tm.getHeading());
+            return false;
+        }
+        return true;
+    }
+
+    // ---- 节流广播 (修复 #5: swap 无竞态) ----
+
+    void flushBuffer() {
+        if (buffer.isEmpty()) return;
+
+        // swap: 原子替换引用，避免 clear() 时丢失并发写入
+        Map<Long, VehicleUpdateMessage> toFlush = buffer;
+        buffer = new LinkedHashMap<>();
+
+        List<VehicleUpdateMessage> batch = new ArrayList<>(toFlush.values());
+
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("type", "VEHICLE_UPDATE");
+        envelope.put("timestamp", Instant.now().toString());
+        envelope.put("vehicles", batch);
+
+        try {
+            messagingTemplate.convertAndSend("/topic/vehicles", envelope);
+        } catch (Exception e) {
+            log.error("WebSocket 广播失败: {}", e.getMessage());
+        }
+    }
+
+    // ---- 在线集合清理 (修复 #4) ----
+
+    public void cleanStaleOnlineSet() {
+        try {
+            Set<String> onlineIds = redis.opsForSet().members("vehicle:online");
+            if (onlineIds == null || onlineIds.isEmpty()) return;
+
+            for (String idStr : onlineIds) {
+                String rtKey = "vehicle:rt:" + idStr;
+                Boolean exists = redis.hasKey(rtKey);
+                if (Boolean.FALSE.equals(exists)) {
+                    redis.opsForSet().remove("vehicle:online", idStr);
+                    log.debug("移除过期在线车辆: {}", idStr);
+                }
+            }
+        } catch (Exception e) {
+            log.error("清理 vehicle:online 失败: {}", e.getMessage());
+        }
+    }
+
+    // ---- 优雅关闭 (修复 #11) ----
+
+    @PreDestroy
+    public void shutdown() {
+        log.info("RealtimeService 关闭中，flush 剩余缓冲区...");
+        flushBuffer();
+        scheduler.shutdown();
+        try {
+            if (!scheduler.awaitTermination(2, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            scheduler.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    // ---- 工具方法 ----
+
+    private Long extractVehicleId(String topic) {
+        if (topic == null || topic.isEmpty()) return null;
+        String[] parts = topic.split("/");
+        if (parts.length >= 3 && "vehicle".equals(parts[0])) {
+            try {
+                return Long.parseLong(parts[1]);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private OffsetDateTime parseTs(String ts) {
+        if (ts == null || ts.isBlank()) return null;
+        try {
+            return OffsetDateTime.parse(ts, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        } catch (Exception e) {
+            return null;  // 返回 null 让调用方拒绝消息
+        }
+    }
+}

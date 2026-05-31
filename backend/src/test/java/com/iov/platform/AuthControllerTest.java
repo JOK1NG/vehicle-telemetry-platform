@@ -15,6 +15,8 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import com.iov.platform.modules.vehicle.mapper.VehicleMapper;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -52,6 +54,12 @@ class AuthControllerTest {
 
     @MockBean
     private VehicleMapper vehicleMapper;
+
+    @MockBean
+    private StringRedisTemplate stringRedisTemplate;
+
+    @MockBean
+    private SimpMessagingTemplate simpMessagingTemplate;
 
     @BeforeEach
     void initTestData() {

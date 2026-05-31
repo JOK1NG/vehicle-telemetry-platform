@@ -77,6 +77,8 @@ public class SecurityConfig {
                 .requestMatchers("/actuator/**").permitAll()
                 // 静态资源
                 .requestMatchers("/", "/favicon.ico", "/error").permitAll()
+                // WebSocket STOMP 端点
+                .requestMatchers("/ws/**").permitAll()
 
                 // ===== RBAC 规则 =====
                 // 写操作需要 ADMIN 角色

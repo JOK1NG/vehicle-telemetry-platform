@@ -29,7 +29,7 @@ spring:
     url: tcp://localhost:1883
     username: ${EMQX_MQTT_USERNAME:}
     password: ${EMQX_MQTT_PASSWORD:}
-    client-id: vehicle-telemetry-backend-${random.uuid}
+    client-id: iov-${random.value}
     default-topic: vehicle/+/telemetry
 
   # MyBatis-Plus: 本地开发打印 SQL 日志
