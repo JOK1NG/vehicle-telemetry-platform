@@ -2,7 +2,10 @@ package com.iov.platform;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ActiveProfiles;
+
+import com.iov.platform.modules.vehicle.mapper.VehicleMapper;
 
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1",
@@ -16,6 +19,9 @@ import org.springframework.test.context.ActiveProfiles;
 })
 @ActiveProfiles("test")
 class VehicleTelemetryBackendApplicationTests {
+
+    @MockBean
+    private VehicleMapper vehicleMapper;
 
     @Test
     void contextLoads() {
