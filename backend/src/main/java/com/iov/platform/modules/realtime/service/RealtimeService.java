@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iov.platform.modules.realtime.dto.TelemetryMessage;
 import com.iov.platform.modules.realtime.dto.VehicleUpdateMessage;
+import com.iov.platform.modules.vehicle.entity.Vehicle;
+import com.iov.platform.modules.vehicle.mapper.VehicleMapper;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -34,6 +36,7 @@ public class RealtimeService {
     private final JdbcTemplate jdbcTemplate;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
+    private final VehicleMapper vehicleMapper;
 
     /** 500ms 节流缓冲区。swap 引用避免与 flush 竞态 */
     private volatile Map<Long, VehicleUpdateMessage> buffer = new LinkedHashMap<>();
@@ -48,11 +51,13 @@ public class RealtimeService {
     public RealtimeService(StringRedisTemplate redis,
                            JdbcTemplate jdbcTemplate,
                            SimpMessagingTemplate messagingTemplate,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           VehicleMapper vehicleMapper) {
         this.redis = redis;
         this.jdbcTemplate = jdbcTemplate;
         this.messagingTemplate = messagingTemplate;
         this.objectMapper = objectMapper;
+        this.vehicleMapper = vehicleMapper;
 
         // 每 500ms flush 缓冲区 (修复竞态: swap 模式)
         scheduler.scheduleAtFixedRate(this::flushBuffer, 500, 500, TimeUnit.MILLISECONDS);
@@ -128,9 +133,12 @@ public class RealtimeService {
             log.error("写入 telemetry 表失败 vehicleId={}: {}", vehicleId, e.getMessage());
         }
 
-        // 4. 放入节流缓冲区
+        // 4. 获取 plateNo（优先复用 buffer 中已有记录，减少 DB 查询）
+        String plateNo = getPlateNo(vehicleId);
+
+        // 5. 放入节流缓冲区
         buffer.put(vehicleId, new VehicleUpdateMessage(
-                vehicleId, tm.getLng(), tm.getLat(), tm.getSpeed(),
+                vehicleId, plateNo, tm.getLng(), tm.getLat(), tm.getSpeed(),
                 tm.getHeading(), tm.getBattery(), 1
         ));
 
@@ -221,6 +229,26 @@ public class RealtimeService {
             scheduler.shutdownNow();
             Thread.currentThread().interrupt();
         }
+    }
+
+    // ---- plateNo 查询（含 buffer 复用优化） ----
+
+    private String getPlateNo(Long vehicleId) {
+        // 优先复用 buffer 中已有记录的 plateNo，避免重复查库
+        VehicleUpdateMessage existing = buffer.get(vehicleId);
+        if (existing != null && existing.getPlateNo() != null && !existing.getPlateNo().isEmpty()) {
+            return existing.getPlateNo();
+        }
+
+        try {
+            Vehicle vehicle = vehicleMapper.selectById(vehicleId);
+            if (vehicle != null && vehicle.getPlateNo() != null) {
+                return vehicle.getPlateNo();
+            }
+        } catch (Exception e) {
+            log.warn("查询车辆 plateNo 失败 vehicleId={}: {}", vehicleId, e.getMessage());
+        }
+        return "";
     }
 
     // ---- 工具方法 ----

@@ -26,6 +26,17 @@ export interface LoginResponse {
   user: UserInfo
 }
 
+export interface VehicleUpdateData {
+  vehicleId: number
+  plateNo: string
+  lng: number
+  lat: number
+  speed: number
+  heading: number
+  battery: number
+  status: number
+}
+
 export interface PageResult<T> {
   records: T[]
   total: number

@@ -12,6 +12,7 @@ import lombok.Data;
 public class VehicleUpdateMessage {
 
     private Long vehicleId;
+    private String plateNo;
     private double lng;
     private double lat;
     private double speed;

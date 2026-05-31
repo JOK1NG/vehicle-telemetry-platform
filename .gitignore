@@ -20,6 +20,9 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
+# Accidental curl redirect artifacts
+localhost:*
+
 # Node / Vite
 node_modules/
 dist/

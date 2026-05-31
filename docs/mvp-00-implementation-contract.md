@@ -108,6 +108,7 @@
   "vehicles": [
     {
       "vehicleId": 1,
+      "plateNo": "沪A12345",
       "lng": 121.473701,
       "lat": 31.230416,
       "speed": 42.5,
