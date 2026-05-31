@@ -1,0 +1,97 @@
+services:
+  # ============================
+  # TimescaleDB + PostGIS
+  # ============================
+  timescaledb:
+    image: timescale/timescaledb-ha:pg16
+    container_name: iov-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-iov_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-iov_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_pg_123}
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./docker/init-db:/docker-entrypoint-initdb.d   # 首次启动自动执行
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-iov_admin} -d ${POSTGRES_DB:-iov_platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - iov-net
+
+  # ============================
+  # EMQX MQTT Broker
+  # ============================
+  emqx:
+    image: emqx/emqx:5.8.8
+    container_name: iov-emqx
+    restart: unless-stopped
+    environment:
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${EMQX_DASHBOARD__DEFAULT_USERNAME:-admin}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD__DEFAULT_PASSWORD:-public}
+    ports:
+      - "1883:1883"     # MQTT
+      - "8883:8883"     # MQTT over SSL
+      - "8083:8083"     # WebSocket
+      - "8084:8084"     # WebSocket over SSL
+      - "18083:18083"   # Dashboard
+    volumes:
+      - emqx_data:/opt/emqx/data
+      - emqx_log:/opt/emqx/log
+    healthcheck:
+      test: ["CMD-SHELL", "emqx ctl status | grep -q 'is started'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - iov-net
+
+  # ============================
+  # Redis
+  # ============================
+  redis:
+    image: redis:7
+    container_name: iov-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-change_me_redis_123}
+      --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-change_me_redis_123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - iov-net
+
+# ============================
+# Volumes
+# ============================
+volumes:
+  timescaledb_data:
+    driver: local
+  emqx_data:
+    driver: local
+  emqx_log:
+    driver: local
+  redis_data:
+    driver: local
+
+# ============================
+# Networks
+# ============================
+networks:
+  iov-net:
+    driver: bridge
