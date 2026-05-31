@@ -1,5 +1,15 @@
 <script setup lang="ts">
 import { RouterLink, RouterView } from 'vue-router'
+import { useAuthStore } from './stores/auth'
+import { useRouter } from 'vue-router'
+
+const authStore = useAuthStore()
+const router = useRouter()
+
+const handleLogout = () => {
+  authStore.logout()
+  router.replace('/login')
+}
 </script>
 
 <template>
@@ -15,12 +25,16 @@ import { RouterLink, RouterView } from 'vue-router'
         <el-menu-item index="2">
           <RouterLink to="/vehicles">车辆列表</RouterLink>
         </el-menu-item>
-        <el-menu-item index="3">
+        <el-menu-item v-if="!authStore.isLoggedIn" index="3">
           <RouterLink to="/login">登录</RouterLink>
         </el-menu-item>
       </el-menu>
       <div class="header-right">
-        <span class="env-tag">M0 脚手架</span>
+        <div v-if="authStore.isLoggedIn" class="user-box">
+          <span class="user-name">{{ authStore.username }}（{{ authStore.role }}）</span>
+          <el-button size="small" type="danger" link @click="handleLogout">退出登录</el-button>
+        </div>
+        <span v-else class="env-tag">M1 登录态 + 车辆列表</span>
       </div>
     </el-header>
     <el-main class="app-main">
@@ -58,13 +72,22 @@ import { RouterLink, RouterView } from 'vue-router'
   display: flex;
   align-items: center;
 }
-.env-tag {
-  font-size: 12px;
-  padding: 2px 8px;
-  background: #f0f0f0;
-  border-radius: 4px;
-  color: #909399;
-}
+  .env-tag {
+    font-size: 12px;
+    padding: 2px 8px;
+    background: #f0f0f0;
+    border-radius: 4px;
+    color: #909399;
+  }
+  .user-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .user-name {
+    color: #606266;
+  }
 .app-main {
   padding: 24px;
   background: #f5f7fa;
