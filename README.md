@@ -16,6 +16,7 @@
 .
 ├── backend/             # Spring Boot 后端
 ├── frontend/            # Vue 3 + TypeScript + Vite 前端
+├── simulator/           # 车辆遥测模拟器（独立 Spring Boot 进程，发布 MQTT telemetry）
 ├── docker/init-db/      # 本地数据库初始化脚本
 ├── docs/                # 设计文档与 MVP 实现契约
 ├── docker-compose.yml   # 本地中间件
@@ -110,6 +111,20 @@ npm run dev
 默认地址：`http://localhost:5173`
 
 开发期 `/api/*` 会通过 Vite 代理转发到 `http://localhost:8080`。
+
+### 5. 启动车辆遥测模拟器（M2 联调）
+
+模拟器是独立 Spring Boot 进程，启动后会向 EMQX `vehicle/{vehicleId}/telemetry`
+持续发布 telemetry payload。详细说明见 `simulator/README.md`。
+
+```bash
+cd simulator
+mvn spring-boot:run
+```
+
+模拟器与后端解耦：自身不查数据库，车辆 ID 通过 `simulator.vehicle-ids` 或
+`simulator.vehicle-count` 静态配置（默认 1..5）。`backend/.../V4__seed_demo_vehicles.sql`
+会预先在 `vehicle` 表中插入 5 辆演示车，让模拟器开箱即用。
 
 ## 开发约定
 
