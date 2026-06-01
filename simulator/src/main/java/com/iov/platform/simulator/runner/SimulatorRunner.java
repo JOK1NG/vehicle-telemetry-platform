@@ -47,7 +47,8 @@ public class SimulatorRunner {
     private final ObjectMapper objectMapper;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private List<VehicleSimState> states;
+    /** 由 onReady() 在主线程赋值、由调度线程 tick() 读取，volatile 保证可见性。 */
+    private volatile List<VehicleSimState> states;
     private ScheduledExecutorService scheduler;
     private long lastStepMs;
 
