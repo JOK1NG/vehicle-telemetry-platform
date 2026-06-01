@@ -110,7 +110,17 @@ npm run dev
 
 默认地址：`http://localhost:5173`
 
-开发期 `/api/*` 会通过 Vite 代理转发到 `http://localhost:8080`。
+开发期 `/api/*` 与 `/ws` 会通过 Vite 代理转发到 `http://localhost:8080`。
+
+### 5. 验证实时链路
+
+本地 `local` profile 默认启用车辆模拟器：
+
+- 配置项：`SIMULATOR_ENABLED=true`
+- 发布间隔：`SIMULATOR_INTERVAL_MS=1000`
+- 车辆数量上限：`SIMULATOR_VEHICLE_LIMIT=20`
+
+模拟器以 `vehicle` 表为车辆来源。先登录前端并在「车辆列表」创建至少一辆车，后端会按契约发布 MQTT 消息到 `vehicle/{vehicleId}/telemetry`，再经 Redis 与 `/topic/vehicles` 推送到「监控大屏」。如果只想手工发布 MQTT，可设置 `SIMULATOR_ENABLED=false` 后重启后端。
 
 ### 5. 启动车辆遥测模拟器（M2 联调）
 

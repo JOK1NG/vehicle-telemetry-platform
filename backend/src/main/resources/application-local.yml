@@ -36,3 +36,9 @@ spring:
   mybatis-plus:
     configuration:
       log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+# 本地开发车辆模拟器：读取 vehicle 表，按 MQTT 契约发布 GCJ-02 遥测
+simulator:
+  enabled: ${SIMULATOR_ENABLED:true}
+  interval-ms: ${SIMULATOR_INTERVAL_MS:1000}
+  vehicle-limit: ${SIMULATOR_VEHICLE_LIMIT:20}

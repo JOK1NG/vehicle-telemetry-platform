@@ -37,6 +37,16 @@ export interface VehicleUpdateData {
   status: number
 }
 
+export interface VehicleSnapshot extends VehicleUpdateData {
+  lastTs: string
+}
+
+export interface VehicleUpdateEnvelope {
+  type: 'VEHICLE_UPDATE'
+  timestamp: string
+  vehicles: VehicleUpdateData[]
+}
+
 export interface PageResult<T> {
   records: T[]
   total: number

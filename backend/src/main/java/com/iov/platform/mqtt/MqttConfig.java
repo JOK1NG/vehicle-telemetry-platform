@@ -12,6 +12,7 @@ import org.springframework.integration.channel.DirectChannel;
 import org.springframework.integration.mqtt.core.DefaultMqttPahoClientFactory;
 import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
 import org.springframework.integration.mqtt.inbound.MqttPahoMessageDrivenChannelAdapter;
+import org.springframework.integration.mqtt.outbound.MqttPahoMessageHandler;
 import org.springframework.integration.mqtt.support.MqttHeaders;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.MessageHandler;
@@ -67,15 +68,27 @@ public class MqttConfig {
     @Bean
     public MqttPahoMessageDrivenChannelAdapter mqttInbound(
             MqttPahoClientFactory mqttClientFactory) {
-        // Paho clientId 限制 23 字符 (修复 #7)
-        String safeClientId = clientId.length() > 23 ? clientId.substring(0, 23) : clientId;
         MqttPahoMessageDrivenChannelAdapter adapter =
                 new MqttPahoMessageDrivenChannelAdapter(
-                        safeClientId, mqttClientFactory, defaultTopic);
+                        buildClientId(""), mqttClientFactory, defaultTopic);
         adapter.setCompletionTimeout(5000);
         adapter.setQos(1);
         adapter.setOutputChannel(mqttInboundChannel());
         return adapter;
+    }
+
+    @Bean
+    public MessageChannel mqttOutboundChannel() {
+        return new DirectChannel();
+    }
+
+    @Bean
+    @ServiceActivator(inputChannel = "mqttOutboundChannel")
+    public MessageHandler mqttOutboundHandler(MqttPahoClientFactory mqttClientFactory) {
+        MqttPahoMessageHandler handler = new MqttPahoMessageHandler(buildClientId("-sim"), mqttClientFactory);
+        handler.setAsync(true);
+        handler.setDefaultQos(1);
+        return handler;
     }
 
     @Bean
@@ -85,5 +98,14 @@ public class MqttConfig {
             log.debug("MQTT 入站消息 topic={}", message.getHeaders().get(MqttHeaders.RECEIVED_TOPIC));
             realtimeService.handleTelemetry(message);
         };
+    }
+
+    private String buildClientId(String suffix) {
+        String base = clientId == null || clientId.isBlank() ? "iov" : clientId;
+        int maxBaseLength = Math.max(1, 23 - suffix.length());
+        if (base.length() > maxBaseLength) {
+            base = base.substring(0, maxBaseLength);
+        }
+        return base + suffix;
     }
 }
