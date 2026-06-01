@@ -8,11 +8,15 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.nio.charset.StandardCharsets;
-
 /**
  * MQTT 出站连接 (Paho).
  * 复用与后端一致的客户端实现，仅用作发布者。
+ *
+ * 关闭策略：MqttClient 实现 AutoCloseable，正常 Spring 会在销毁阶段自动
+ * 调用 client.close()。但 Paho 1.2.5 的 close() 在与 @PreDestroy 同时
+ * 触发时会抛 REASON_CODE_CLIENT_ALREADY_CONNECTED (32100)，因为 close()
+ * 内部会再次尝试 disconnect()。这里用 destroyMethod="" 关掉 Spring 的
+ * AutoCloseable 自动调用，由 @PreDestroy close() 单独完成显式断开。
  */
 @Configuration
 @Slf4j
@@ -20,7 +24,7 @@ public class MqttConfig {
 
     private MqttClient client;
 
-    @Bean(destroyMethod = "disconnect")  // Spring 销毁时仅调用 disconnect(),不调用 close()
+    @Bean(destroyMethod = "")
     public MqttClient mqttClient(SimulatorProperties props) throws Exception {
         SimulatorProperties.Mqtt mqtt = props.getMqtt();
         // Paho clientId 限制 23 字符
@@ -61,8 +65,4 @@ public class MqttConfig {
             }
         }
     }
-
-    /** 抑制 IDE 静态分析对 StandardCharsets 的未用提示。 */
-    @SuppressWarnings("unused")
-    private static final java.nio.charset.Charset UTF_8 = StandardCharsets.UTF_8;
 }
