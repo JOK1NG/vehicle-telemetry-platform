@@ -1,19 +1,19 @@
-import request from './request'
-import type { ApiResult, LoginResponse, UserInfo } from '../types'
+import request from './client';
+import type { ApiResult, LoginResponse, UserInfo } from '../types';
 
 export interface LoginRequest {
-  username: string
-  password: string
+  username: string;
+  password: string;
 }
 
 export const authApi = {
   async login(data: LoginRequest): Promise<LoginResponse> {
-    const res = await request.post('/api/auth/login', data) as unknown as ApiResult<LoginResponse>
-    return res.data!
+    const res = await request.post('/api/auth/login', data);
+    return (res as unknown as ApiResult<LoginResponse>).data!;
   },
 
   async me(): Promise<UserInfo> {
-    const res = await request.get('/api/auth/me') as unknown as ApiResult<UserInfo>
-    return res.data!
+    const res = await request.get('/api/auth/me');
+    return (res as unknown as ApiResult<UserInfo>).data!;
   },
-}
+};

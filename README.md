@@ -1,6 +1,6 @@
 # vehicle-telemetry-platform
 
-车辆实时监控与轨迹回放平台，用于熟悉 Vue 3 + TypeScript + Spring Boot 后台业务开发。当前只做 MVP：工程初始化、登录与车辆台账、车辆模拟与实时监控。
+车辆实时监控与轨迹回放平台，用于熟悉 React + TypeScript + Spring Boot 后台业务开发。当前只做 MVP：工程初始化、登录与车辆台账、车辆模拟与实时监控。
 
 ## MVP 范围
 
@@ -15,7 +15,7 @@
 ```text
 .
 ├── backend/             # Spring Boot 后端
-├── frontend/            # Vue 3 + TypeScript + Vite 前端
+├── frontend/            # React 18 + TypeScript + Vite + Tailwind v4 前端
 ├── simulator/           # 车辆遥测模拟器（独立 Spring Boot 进程，发布 MQTT telemetry）
 ├── docker/init-db/      # 本地数据库初始化脚本
 ├── docs/                # 设计文档与 MVP 实现契约

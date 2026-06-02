@@ -1,0 +1,377 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@plugin "tailwindcss-animate";
+
+@custom-variant dark (&:is(.dark *));
+
+body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  box-sizing: border-box;
+  overflow: auto;
+  overscroll-behavior-x: none;
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-heading: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  /* Brand: a refined teal/cyan that reads as "tech / vehicle / telemetry" */
+  --background: oklch(0.99 0.002 240);
+  --foreground: oklch(0.18 0.015 250);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.015 250);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.015 250);
+
+  --primary: oklch(0.55 0.13 200);
+  --primary-foreground: oklch(0.99 0.005 200);
+
+  --secondary: oklch(0.97 0.005 240);
+  --secondary-foreground: oklch(0.22 0.015 250);
+
+  --muted: oklch(0.97 0.005 240);
+  --muted-foreground: oklch(0.5 0.015 250);
+
+  --accent: oklch(0.96 0.025 200);
+  --accent-foreground: oklch(0.3 0.08 200);
+
+  --destructive: oklch(0.6 0.21 27);
+  --border: oklch(0.92 0.005 240);
+  --input: oklch(0.93 0.005 240);
+  --ring: oklch(0.55 0.13 200);
+
+  /* Status & chart palette */
+  --success: oklch(0.62 0.16 155);
+  --warning: oklch(0.75 0.15 75);
+  --chart-1: oklch(0.55 0.13 200);
+  --chart-2: oklch(0.62 0.16 155);
+  --chart-3: oklch(0.75 0.15 75);
+  --chart-4: oklch(0.6 0.21 27);
+  --chart-5: oklch(0.55 0.18 290);
+
+  --sidebar: oklch(0.99 0.002 240);
+  --sidebar-foreground: oklch(0.2 0.015 250);
+  --sidebar-primary: oklch(0.55 0.13 200);
+  --sidebar-primary-foreground: oklch(0.99 0.005 200);
+  --sidebar-accent: oklch(0.96 0.015 200);
+  --sidebar-accent-foreground: oklch(0.25 0.08 200);
+  --sidebar-border: oklch(0.92 0.005 240);
+  --sidebar-ring: oklch(0.55 0.13 200);
+}
+
+.dark {
+  --background: oklch(0.16 0.015 250);
+  --foreground: oklch(0.96 0.005 240);
+  --card: oklch(0.2 0.018 250);
+  --card-foreground: oklch(0.96 0.005 240);
+  --popover: oklch(0.2 0.018 250);
+  --popover-foreground: oklch(0.96 0.005 240);
+  --primary: oklch(0.72 0.13 200);
+  --primary-foreground: oklch(0.16 0.015 250);
+  --secondary: oklch(0.25 0.015 250);
+  --secondary-foreground: oklch(0.96 0.005 240);
+  --muted: oklch(0.25 0.015 250);
+  --muted-foreground: oklch(0.7 0.015 240);
+  --accent: oklch(0.3 0.05 200);
+  --accent-foreground: oklch(0.92 0.05 200);
+  --destructive: oklch(0.65 0.2 27);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.72 0.13 200);
+  --chart-1: oklch(0.72 0.13 200);
+  --chart-2: oklch(0.72 0.16 155);
+  --chart-3: oklch(0.8 0.15 75);
+  --chart-4: oklch(0.7 0.21 27);
+  --chart-5: oklch(0.72 0.18 290);
+  --sidebar: oklch(0.18 0.015 250);
+  --sidebar-foreground: oklch(0.96 0.005 240);
+  --sidebar-primary: oklch(0.72 0.13 200);
+  --sidebar-primary-foreground: oklch(0.16 0.015 250);
+  --sidebar-accent: oklch(0.25 0.05 200);
+  --sidebar-accent-foreground: oklch(0.92 0.05 200);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.72 0.13 200);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.01em;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overscroll-behavior-x: none;
+  }
+}
+
+/* Numeric / tabular figures for dashboards */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Subtle pulse for live indicators */
+@keyframes live-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.62 0.16 155 / 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px oklch(0.62 0.16 155 / 0);
+  }
+}
+.live-dot {
+  animation: live-pulse 1.6s ease-out infinite;
+}
+
+/* Subtle vertical nudge for "scroll for more" hints */
+@keyframes scroll-hint {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(3px);
+    opacity: 1;
+  }
+}
+.scroll-hint {
+  animation: scroll-hint 1.6s ease-in-out infinite;
+}
+
+/* Soft fade-in for view transitions */
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.view-in {
+  animation: view-in 220ms ease-out both;
+}
+
+/* Subtle scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0.85 0.005 240);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.75 0.005 240);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+/* Broken Image Fallback Styles */
+img.broken-image-fallback {
+  position: relative;
+  display: inline-block;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  object-fit: none;
+  object-position: center;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.dark img.broken-image-fallback {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* =========================================================================
+ * AMap custom vehicle markers
+ * ========================================================================= */
+.vehicle-marker {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.vehicle-marker__arrow {
+  position: absolute;
+  left: 8px;
+  top: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px 6px 10px 10px;
+  background: oklch(0.55 0.13 200);
+  box-shadow: 0 8px 16px oklch(0.55 0.13 200 / 0.28);
+  transition: background 200ms ease, box-shadow 200ms ease;
+  transform-origin: 50% 70%;
+}
+
+.vehicle-marker__arrow::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: -7px;
+  border-right: 5px solid transparent;
+  border-bottom: 9px solid oklch(0.55 0.13 200);
+  border-left: 5px solid transparent;
+  transition: border-bottom-color 200ms ease;
+}
+
+.vehicle-marker__circle {
+  position: absolute;
+  left: 13px;
+  top: 11px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 0 0 1px oklch(0.55 0.13 200 / 0.4);
+}
+
+.vehicle-marker__label {
+  position: absolute;
+  left: 50%;
+  top: 33px;
+  transform: translateX(-50%);
+  max-width: 96px;
+  overflow: hidden;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: oklch(0.2 0.015 250);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 12px rgba(31, 41, 55, 0.12);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  border: 0.5px solid oklch(0.55 0.13 200 / 0.3);
+}
+
+.vehicle-marker.is-selected .vehicle-marker__arrow {
+  background: oklch(0.65 0.18 35);
+  box-shadow: 0 8px 18px oklch(0.65 0.18 35 / 0.34);
+}
+
+.vehicle-marker.is-selected .vehicle-marker__arrow::before {
+  border-bottom-color: oklch(0.65 0.18 35);
+}
+
+.vehicle-marker.is-selected .vehicle-marker__label {
+  border-color: oklch(0.65 0.18 35 / 0.4);
+}
+
+.vehicle-marker.is-selected::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  border-radius: 50%;
+  border: 2px solid oklch(0.65 0.18 35 / 0.5);
+  animation: marker-ping 1.6s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes marker-ping {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
