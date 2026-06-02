@@ -130,18 +130,18 @@ npm run dev
 - 浏览器打开 `http://localhost:5173/login`，应能看到登录页
 - 使用 `admin` / `admin123` 登录后应进入「车辆列表」
 - 使用 `viewer` / `viewer123` 登录后也能查看车辆列表，但无新增/编辑/删除按钮
-- 左侧菜单「监控大屏」应能加载高德地图并显示车辆标记（需配置高德 Key）
+- 左侧菜单「监控大屏」配置高德 Key 后应能加载高德地图并显示车辆标记；未配置 Key 时会显示提示，但登录、车辆列表与实时 WebSocket 链路仍可验证
 
 开发期 `/api/*` 与 `/ws` 会通过 Vite 代理转发到 `http://localhost:8080`。
 
 > **高德地图配置**
 >
-> 前端 `.env.local`（不入仓）必须配置：
+> 前端 `.env.local`（不入仓）可配置：
 > ```bash
 > VITE_AMAP_KEY=你的高德JS_API_Key
 > VITE_AMAP_SECURITY_JS_CODE=你的安全密钥
 > ```
-> 未配置时监控大屏会提示 "请在 .env.local 中配置 VITE_AMAP_KEY"，但车辆列表、登录、WebSocket 仍可正常验证。
+> 未配置时监控大屏会提示需要配置 `VITE_AMAP_KEY`，但车辆列表、登录、WebSocket 仍可正常验证。
 
 ### 5. 验证实时链路（内置模拟器）
 
@@ -230,7 +230,7 @@ mvn spring-boot:run
 | 地理围栏 | ❌ 不在 MVP | PostGIS 已就绪，但业务未实现 |
 | Kafka | ❌ 不在 MVP | 未引入 |
 | 轨迹抽稀 / 压测 | ❌ 不在 MVP | 未实现 |
-| CI/CD | ❌ 不在 MVP | 未实现 |
+| Stage A CI | ✅ 已验证 | GitHub Actions 执行前端 `npm ci`、`npx tsc -b`、`npm run build` |
 | 复杂报表 / ECharts 大屏 | ❌ 不在 MVP | 未实现 |
 
 ## 项目文档
