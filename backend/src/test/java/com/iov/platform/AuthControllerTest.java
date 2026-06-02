@@ -89,6 +89,9 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.code").value(401));
     }
 
+    /**
+     * 安全修复（MUL-39）：登录失败现在返回 HTTP 401 而非 HTTP 200 + body code 401
+     */
     @Test
     void login_withBadCredentials_returns401() throws Exception {
         LoginRequest request = new LoginRequest();
@@ -98,7 +101,7 @@ class AuthControllerTest {
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isOk())
+                .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401))
                 .andExpect(jsonPath("$.message").value("用户名或密码错误"));
     }

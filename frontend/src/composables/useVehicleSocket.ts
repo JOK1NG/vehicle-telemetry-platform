@@ -3,7 +3,10 @@ import { Client, type IFrame, type IMessage } from '@stomp/stompjs'
 import SockJS from 'sockjs-client'
 import type { VehicleUpdateEnvelope } from '../types'
 
-/** 创建 STOMP over SockJS 客户端并订阅 /topic/vehicles */
+/**
+ * 创建 STOMP over SockJS 客户端并订阅 /topic/vehicles
+ * 安全修复（MUL-39）：Ws 握手时携带 JWT token，后端 StompAuthInterceptor 校验
+ */
 export function useVehicleSocket(onMessage: (envelope: VehicleUpdateEnvelope) => void) {
   /** WebSocket 连接状态 */
   const wsConnected = ref(false)
@@ -11,7 +14,12 @@ export function useVehicleSocket(onMessage: (envelope: VehicleUpdateEnvelope) =>
   const wsError = ref<string | null>(null)
 
   const client = new Client({
-    webSocketFactory: () => new SockJS('/ws'),
+    // 安全修复：在 SockJS URL 中带上 token 参数，后端 StompAuthInterceptor 会读取
+    webSocketFactory: () => {
+      const token = localStorage.getItem('token')
+      const url = token ? `/ws?token=${encodeURIComponent(token)}` : '/ws'
+      return new SockJS(url)
+    },
     reconnectDelay: 5000, // 断线后 5 秒重连
     heartbeatIncoming: 10000,
     heartbeatOutgoing: 10000,

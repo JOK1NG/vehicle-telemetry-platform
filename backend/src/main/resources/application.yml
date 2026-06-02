@@ -12,11 +12,14 @@ spring:
     global-config:
       db-config:
         id-type: auto
+        # 注意：vehicle 表和 Vehicle 实体均无 deleted 字段及 @TableLogic 注解
+        # 此配置仅用于未来逻辑删除扩展，当前不影响功能
         logic-delete-field: deleted
         logic-delete-value: 1
         logic-not-delete-value: 0
 
 # Actuator 暴露健康检查
+# 安全修复（MUL-39）：仅暴露 health 和 info，health details 仅对认证用户可见
 management:
   endpoints:
     web:
@@ -24,7 +27,7 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: always
+      show-details: when-authorized
 
 # 日志
 logging:
@@ -33,6 +36,7 @@ logging:
     org.springframework.security: INFO
 
 # JWT 默认配置（可被 profile 覆盖）
+# 警告：生产环境务必修改 JWT_SECRET 和所有默认密码
 jwt:
   secret: ${JWT_SECRET:change_me_jwt_secret_please_use_long_random_string}
   expiration: ${JWT_EXPIRATION:86400000}

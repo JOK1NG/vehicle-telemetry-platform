@@ -20,9 +20,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * 实时遥测处理服务
@@ -38,8 +36,11 @@ public class RealtimeService {
     private final ObjectMapper objectMapper;
     private final VehicleMapper vehicleMapper;
 
-    /** 500ms 节流缓冲区。swap 引用避免与 flush 竞态 */
-    private volatile Map<Long, VehicleUpdateMessage> buffer = new LinkedHashMap<>();
+    /** 500ms 节流缓冲区。使用 ConcurrentHashMap 保证线程安全，swap 引用避免与 flush 竞态 */
+    private volatile Map<Long, VehicleUpdateMessage> buffer = new ConcurrentHashMap<>();
+
+    /** 缓存车辆存在性校验结果，避免每条消息都查库 */
+    private final Set<Long> knownVehicleIds = ConcurrentHashMap.newKeySet();
 
     private final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor(r -> {
@@ -59,11 +60,14 @@ public class RealtimeService {
         this.objectMapper = objectMapper;
         this.vehicleMapper = vehicleMapper;
 
-        // 每 500ms flush 缓冲区 (修复竞态: swap 模式)
+        // 每 500ms flush 缓冲区 (swap 模式，ConcurrentHashMap 保证线程安全)
         scheduler.scheduleAtFixedRate(this::flushBuffer, 500, 500, TimeUnit.MILLISECONDS);
 
-        // 每 30s 清理 vehicle:online 集合中的过期车辆 (修复 #4)
+        // 每 30s 清理 vehicle:online 集合中的过期车辆
         scheduler.scheduleAtFixedRate(this::cleanStaleOnlineSet, 30, 30, TimeUnit.SECONDS);
+
+        // 每 60s 清理 knownVehicleIds 缓存，防止已删除车辆的 ID 一直残留
+        scheduler.scheduleAtFixedRate(this::cleanKnownVehicleCache, 60, 60, TimeUnit.SECONDS);
     }
 
     /**
@@ -84,6 +88,12 @@ public class RealtimeService {
             return;
         }
 
+        // 校验车辆是否存在于 vehicle 表（缓存加速）
+        if (!isKnownVehicle(vehicleId)) {
+            log.warn("MQTT 遥测: vehicleId={} 不存在于 vehicle 表，忽略消息", vehicleId);
+            return;
+        }
+
         TelemetryMessage tm;
         try {
             tm = objectMapper.readValue(payload, TelemetryMessage.class);
@@ -92,12 +102,18 @@ public class RealtimeService {
             return;
         }
 
-        // 字段范围校验 (修复 #8)
-        if (!isValidTelemetry(tm, vehicleId)) {
-            return;  // 具体日志已在 isValidTelemetry 中输出
+        // null 字段校验：缺失必要字段时拒绝消息
+        if (tm.getLng() == null || tm.getLat() == null) {
+            log.warn("遥测缺少必填字段 vehicleId={} lng={} lat={}", vehicleId, tm.getLng(), tm.getLat());
+            return;
         }
 
-        // 时间戳解析 — 失败则拒绝消息 (修复 #9)
+        // 字段范围校验
+        if (!isValidTelemetry(tm, vehicleId)) {
+            return;
+        }
+
+        // 时间戳解析 — 失败则拒绝消息
         OffsetDateTime ts = parseTs(tm.getTs());
         if (ts == null) {
             log.warn("遥测时间戳无效 vehicleId={} ts={}", vehicleId, tm.getTs());
@@ -109,9 +125,9 @@ public class RealtimeService {
         Map<String, String> rtData = new LinkedHashMap<>();
         rtData.put("lng", String.valueOf(tm.getLng()));
         rtData.put("lat", String.valueOf(tm.getLat()));
-        rtData.put("speed", String.valueOf(tm.getSpeed()));
-        rtData.put("heading", String.valueOf(tm.getHeading()));
-        rtData.put("battery", String.valueOf(tm.getBattery()));
+        rtData.put("speed", String.valueOf(tm.getSpeed() != null ? tm.getSpeed() : 0));
+        rtData.put("heading", String.valueOf(tm.getHeading() != null ? tm.getHeading() : 0));
+        rtData.put("battery", String.valueOf(tm.getBattery() != null ? tm.getBattery() : 0));
         rtData.put("ts", tm.getTs());
         redis.opsForHash().putAll(rtKey, rtData);
         redis.expire(rtKey, Duration.ofSeconds(10));
@@ -119,33 +135,63 @@ public class RealtimeService {
         // 2. 标记在线
         redis.opsForSet().add("vehicle:online", String.valueOf(vehicleId));
 
-        // 3. 写 telemetry 表 (含 geom 字段, 修复 #6)
+        // 3. 写 telemetry 表 (含 geom 字段)
         try {
             jdbcTemplate.update(
                     "INSERT INTO telemetry (time, vehicle_id, lng, lat, speed, heading, battery, fault_code, geom) "
                   + "VALUES (?::timestamptz, ?, ?, ?, ?, ?, ?, ?, "
                   + "ST_SetSRID(ST_MakePoint(?, ?), 4326))",
                     ts, vehicleId, tm.getLng(), tm.getLat(),
-                    tm.getSpeed(), tm.getHeading(), tm.getBattery(), tm.getFaultCode(),
+                    tm.getSpeed() != null ? tm.getSpeed() : 0,
+                    tm.getHeading() != null ? tm.getHeading() : 0,
+                    tm.getBattery() != null ? tm.getBattery() : 0,
+                    tm.getFaultCode(),
                     tm.getLng(), tm.getLat()
             );
         } catch (Exception e) {
             log.error("写入 telemetry 表失败 vehicleId={}: {}", vehicleId, e.getMessage());
         }
 
-        // 4. 获取 plateNo（优先复用 buffer 中已有记录，减少 DB 查询）
+        // 4. 获取 plateNo 和 status
         String plateNo = getPlateNo(vehicleId);
+        int status = getVehicleStatus(vehicleId);
 
         // 5. 放入节流缓冲区
         buffer.put(vehicleId, new VehicleUpdateMessage(
-                vehicleId, plateNo, tm.getLng(), tm.getLat(), tm.getSpeed(),
-                tm.getHeading(), tm.getBattery(), 1
+                vehicleId, plateNo, tm.getLng(), tm.getLat(),
+                tm.getSpeed() != null ? tm.getSpeed() : 0,
+                tm.getHeading() != null ? tm.getHeading() : 0,
+                tm.getBattery() != null ? tm.getBattery() : 0,
+                status
         ));
 
         log.debug("收到遥测 vehicleId={} speed={} battery={}", vehicleId, tm.getSpeed(), tm.getBattery());
     }
 
-    // ---- 字段校验 (修复 #8) ----
+    // ---- 车辆存在性校验（带缓存）----
+
+    private boolean isKnownVehicle(Long vehicleId) {
+        if (knownVehicleIds.contains(vehicleId)) {
+            return true;
+        }
+        try {
+            Vehicle vehicle = vehicleMapper.selectById(vehicleId);
+            if (vehicle != null) {
+                knownVehicleIds.add(vehicleId);
+                return true;
+            }
+        } catch (Exception e) {
+            log.warn("查询车辆存在性失败 vehicleId={}: {}", vehicleId, e.getMessage());
+        }
+        return false;
+    }
+
+    private void cleanKnownVehicleCache() {
+        knownVehicleIds.clear();
+        log.debug("已清理 knownVehicleIds 缓存");
+    }
+
+    // ---- 字段校验 ----
 
     private boolean isValidTelemetry(TelemetryMessage tm, Long vehicleId) {
         if (tm.getLng() < -180 || tm.getLng() > 180) {
@@ -156,29 +202,29 @@ public class RealtimeService {
             log.warn("遥测纬度越界 vehicleId={} lat={}", vehicleId, tm.getLat());
             return false;
         }
-        if (tm.getSpeed() < 0) {
+        if (tm.getSpeed() != null && tm.getSpeed() < 0) {
             log.warn("遥测速度负值 vehicleId={} speed={}", vehicleId, tm.getSpeed());
             return false;
         }
-        if (tm.getBattery() < 0 || tm.getBattery() > 100) {
+        if (tm.getBattery() != null && (tm.getBattery() < 0 || tm.getBattery() > 100)) {
             log.warn("遥测电量越界 vehicleId={} battery={}", vehicleId, tm.getBattery());
             return false;
         }
-        if (tm.getHeading() < 0 || tm.getHeading() > 360) {
+        if (tm.getHeading() != null && (tm.getHeading() < 0 || tm.getHeading() > 360)) {
             log.warn("遥测航向越界 vehicleId={} heading={}", vehicleId, tm.getHeading());
             return false;
         }
         return true;
     }
 
-    // ---- 节流广播 (修复 #5: swap 无竞态) ----
+    // ---- 节流广播 ----
 
     void flushBuffer() {
         if (buffer.isEmpty()) return;
 
-        // swap: 原子替换引用，避免 clear() 时丢失并发写入
+        // swap: 原子替换引用，避免 flush 期间丢失并发写入
         Map<Long, VehicleUpdateMessage> toFlush = buffer;
-        buffer = new LinkedHashMap<>();
+        buffer = new ConcurrentHashMap<>();
 
         List<VehicleUpdateMessage> batch = new ArrayList<>(toFlush.values());
 
@@ -194,7 +240,7 @@ public class RealtimeService {
         }
     }
 
-    // ---- 在线集合清理 (修复 #4) ----
+    // ---- 在线集合清理 ----
 
     public void cleanStaleOnlineSet() {
         try {
@@ -214,7 +260,7 @@ public class RealtimeService {
         }
     }
 
-    // ---- 优雅关闭 (修复 #11) ----
+    // ---- 优雅关闭 ----
 
     @PreDestroy
     public void shutdown() {
@@ -231,7 +277,7 @@ public class RealtimeService {
         }
     }
 
-    // ---- plateNo 查询（含 buffer 复用优化） ----
+    // ---- plateNo 和 status 查询（含 buffer 复用优化） ----
 
     private String getPlateNo(Long vehicleId) {
         // 优先复用 buffer 中已有记录的 plateNo，避免重复查库
@@ -249,6 +295,18 @@ public class RealtimeService {
             log.warn("查询车辆 plateNo 失败 vehicleId={}: {}", vehicleId, e.getMessage());
         }
         return "";
+    }
+
+    private int getVehicleStatus(Long vehicleId) {
+        try {
+            Vehicle vehicle = vehicleMapper.selectById(vehicleId);
+            if (vehicle != null && vehicle.getStatus() != null) {
+                return vehicle.getStatus();
+            }
+        } catch (Exception e) {
+            log.warn("查询车辆 status 失败 vehicleId={}: {}", vehicleId, e.getMessage());
+        }
+        return 1; // 在线车辆默认 status=1
     }
 
     // ---- 工具方法 ----
@@ -271,7 +329,7 @@ public class RealtimeService {
         try {
             return OffsetDateTime.parse(ts, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         } catch (Exception e) {
-            return null;  // 返回 null 让调用方拒绝消息
+            return null;
         }
     }
 }

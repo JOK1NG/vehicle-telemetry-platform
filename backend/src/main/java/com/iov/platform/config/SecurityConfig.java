@@ -18,11 +18,18 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.List;
+
 /**
  * Spring Security 配置 (M1 - JWT + RBAC)
  *
  * 认证：JWT 无状态
  * 鉴权：ADMIN 可读写，VIEWER 只读
+ *
+ * 安全修复（MUL-39 审查）：
+ * - CORS: 收紧为 localhost 开发域名，不再使用 * + credentials
+ * - Actuator: health details 仅对认证用户可见
+ * - WebSocket: 保留 /ws/** permitAll 以允许 SockJS 握手，STOMP 鉴权由 StompAuthInterceptor 完成
  */
 @Configuration
 @EnableWebSecurity
@@ -48,9 +55,17 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.addAllowedOriginPattern("*");
-        configuration.addAllowedMethod("*");
-        configuration.addAllowedHeader("*");
+        // 安全修复：不再使用 * + allowCredentials，改为明确的开发域名
+        configuration.setAllowedOrigins(List.of(
+                "http://localhost:5173",
+                "http://localhost:5174",
+                "http://localhost:3000",
+                "http://127.0.0.1:5173",
+                "http://127.0.0.1:5174",
+                "http://127.0.0.1:3000"
+        ));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
@@ -73,11 +88,13 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/login").permitAll()
                 // 健康检查
                 .requestMatchers("/health").permitAll()
-                // Actuator 健康检查
-                .requestMatchers("/actuator/**").permitAll()
+                // Actuator：仅暴露 health（不含 details）和 info
+                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/info").permitAll()
+                .requestMatchers("/actuator/**").denyAll()
                 // 静态资源
                 .requestMatchers("/", "/favicon.ico", "/error").permitAll()
-                // WebSocket STOMP 端点
+                // WebSocket STOMP 端点（SockJS 需要握手路径放行，STOMP CONNECT 由 StompAuthInterceptor 鉴权）
                 .requestMatchers("/ws/**").permitAll()
 
                 // ===== RBAC 规则 =====

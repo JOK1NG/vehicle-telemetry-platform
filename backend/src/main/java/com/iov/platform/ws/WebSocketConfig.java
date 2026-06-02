@@ -1,6 +1,8 @@
 package com.iov.platform.ws;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -11,16 +13,21 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
  * STOMP endpoint: /ws
  * Broker: /topic, /queue
  *
- * TODO(security): setAllowedOriginPatterns("*") 生产环境需收紧为前端确切域名
+ * 安全：CONNECT 帧通过 StompAuthInterceptor 校验 JWT
+ * 生产环境需将 setAllowedOriginPatterns 收紧为前端确切域名
  */
 @Configuration
 @EnableWebSocketMessageBroker
+@RequiredArgsConstructor
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+    private final StompAuthInterceptor stompAuthInterceptor;
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
+                .setAllowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*")
+                .addInterceptors(new TokenHandshakeInterceptor())
                 .withSockJS();
     }
 
@@ -28,5 +35,10 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void configureMessageBroker(MessageBrokerRegistry registry) {
         registry.enableSimpleBroker("/topic", "/queue");
         registry.setApplicationDestinationPrefixes("/app");
+    }
+
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.interceptors(stompAuthInterceptor);
     }
 }

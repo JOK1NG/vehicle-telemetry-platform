@@ -112,7 +112,7 @@ npm run dev
 
 开发期 `/api/*` 与 `/ws` 会通过 Vite 代理转发到 `http://localhost:8080`。
 
-### 5. 验证实时链路
+### 5. 验证实时链路（内置模拟器）
 
 本地 `local` profile 默认启用车辆模拟器：
 
@@ -120,9 +120,11 @@ npm run dev
 - 发布间隔：`SIMULATOR_INTERVAL_MS=1000`
 - 车辆数量上限：`SIMULATOR_VEHICLE_LIMIT=20`
 
-模拟器以 `vehicle` 表为车辆来源。先登录前端并在「车辆列表」创建至少一辆车，后端会按契约发布 MQTT 消息到 `vehicle/{vehicleId}/telemetry`，再经 Redis 与 `/topic/vehicles` 推送到「监控大屏」。如果只想手工发布 MQTT，可设置 `SIMULATOR_ENABLED=false` 后重启后端。
+内置模拟器以 `vehicle` 表为车辆来源。先登录前端并在「车辆列表」创建至少一辆车，后端会按契约发布 MQTT 消息到 `vehicle/{vehicleId}/telemetry`，再经 Redis 与 `/topic/vehicles` 推送到「监控大屏」。如果只想手工发布 MQTT，可设置 `SIMULATOR_ENABLED=false` 后重启后端。
 
-### 5. 启动车辆遥测模拟器（M2 联调）
+> **注意**：内置模拟器和独立模拟器不要同时启用，否则会向 MQTT 双倍写入数据。
+
+### 6. 启动独立车辆遥测模拟器（M2 联调）
 
 模拟器是独立 Spring Boot 进程，启动后会向 EMQX `vehicle/{vehicleId}/telemetry`
 持续发布 telemetry payload。详细说明见 `simulator/README.md`。

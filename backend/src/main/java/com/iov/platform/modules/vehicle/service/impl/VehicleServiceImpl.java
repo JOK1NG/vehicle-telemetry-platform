@@ -11,6 +11,7 @@ import com.iov.platform.modules.vehicle.mapper.VehicleMapper;
 import com.iov.platform.modules.vehicle.service.VehicleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +21,8 @@ import java.time.OffsetDateTime;
 @Service
 @RequiredArgsConstructor
 public class VehicleServiceImpl extends ServiceImpl<VehicleMapper, Vehicle> implements VehicleService {
+
+    private final StringRedisTemplate redis;
 
     @Override
     public Page<Vehicle> listVehicles(long current, long size) {
@@ -98,6 +101,12 @@ public class VehicleServiceImpl extends ServiceImpl<VehicleMapper, Vehicle> impl
         if (exist == null) {
             throw new ResourceNotFoundException("车辆不存在");
         }
+
+        // 清理 Redis 中的实时态缓存和在线标记（MUL-39 修复）
+        String rtKey = "vehicle:rt:" + id;
+        redis.delete(rtKey);
+        redis.opsForSet().remove("vehicle:online", String.valueOf(id));
+
         return removeById(id);
     }
 }
