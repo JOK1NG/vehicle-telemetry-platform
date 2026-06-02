@@ -68,7 +68,9 @@ docker compose ps
 | EMQX MQTT | 1883 | 车辆遥测接入 |
 | EMQX Dashboard | 18083 | 默认 `admin` / `public` |
 | TimescaleDB/PostGIS | 5432 | PostgreSQL 16 + TimescaleDB + PostGIS |
-| Redis | 6379 | 实时车辆状态缓存 |
+| Redis | 6380 -> 6379 | 实时车辆状态缓存。宿主机默认使用 6380，避免和本机 Redis 冲突 |
+
+> **Redis 端口注意**：如果本机安装了 Homebrew Redis，裸 `redis-cli` 通常会连到本机 `127.0.0.1:6379`，不是本项目的 Docker Redis。检查实时车辆缓存时必须显式使用 `-p 6380`。
 
 常用命令：
 
@@ -76,6 +78,8 @@ docker compose ps
 docker compose logs -f emqx
 docker compose logs -f timescaledb
 docker compose logs -f redis
+redis-cli -p 6380 -a change_me_redis_123 SMEMBERS vehicle:online
+redis-cli -p 6380 -a change_me_redis_123 HGETALL vehicle:rt:1
 docker compose down
 docker compose down -v
 ```
