@@ -3,35 +3,17 @@ name: Frontend CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-
-permissions:
-  contents: read
-
-concurrency:
-  group: frontend-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   build:
-    name: Typecheck & Build
     runs-on: ubuntu-latest
+    defaults:
+      working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Install dependencies
-        working-directory: frontend
-        run: npm ci
-
-      - name: Typecheck
-        working-directory: frontend
-        run: npx tsc -b
-
-      - name: Build
-        working-directory: frontend
-        run: npm run build
+      - run: npm ci
+      - run: npx tsc -b
+      - run: npm run build
