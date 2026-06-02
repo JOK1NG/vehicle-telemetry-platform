@@ -53,6 +53,13 @@ export function TelemetryMap({
   const [zoomPercent, setZoomPercent] = useState(100);
   const [isReady, setIsReady] = useState(false);
 
+  // Stabilize callback identities so the map init effect doesn't tear down
+  // the AMap instance on every parent re-render (which fires on every WS tick).
+  const onMapReadyRef = useRef(onMapReady);
+  onMapReadyRef.current = onMapReady;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
   useEffect(() => {
     if (amapReady) return;
     load();
@@ -64,11 +71,10 @@ export function TelemetryMap({
     if (!map) return;
     mapRef.current = map;
     setIsReady(true);
-    onMapReady?.(map);
+    onMapReadyRef.current?.(map);
 
     const onZoomChange = () => {
       const z = map.getZoom();
-      // AMap zoom 3-20, map to percent (3=20%, 20=200%)
       const pct = Math.round(((z - 3) / (20 - 3)) * 100 + 20);
       setZoomPercent(pct);
     };
@@ -81,7 +87,8 @@ export function TelemetryMap({
       markersRef.current.clear();
       setIsReady(false);
     };
-  }, [amapReady, createMap, onMapReady]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amapReady, createMap]);
 
   useEffect(() => {
     if (!isReady || !getAMap() || !mapRef.current) return;
@@ -95,7 +102,7 @@ export function TelemetryMap({
         const el = createMarkerEl(v, isSelected);
         el.addEventListener('click', (e) => {
           e.stopPropagation();
-          onSelect(v.vehicleId);
+          onSelectRef.current(v.vehicleId);
         });
         const marker = new AMap.Marker({
           position: [v.lng, v.lat],
@@ -118,7 +125,8 @@ export function TelemetryMap({
         markersRef.current.delete(id);
       }
     });
-  }, [realtime, selectedId, isReady, getAMap, onSelect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realtime, selectedId, isReady, getAMap]);
 
   const fitToVehicles = () => {
     if (!mapRef.current || realtime.length === 0) return;
