@@ -1,7 +1,6 @@
 package com.iov.platform.modules.realtime.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.iov.platform.modules.realtime.dto.TelemetryMessage;
 import com.iov.platform.modules.realtime.dto.VehicleUpdateMessage;
 import com.iov.platform.modules.vehicle.entity.Vehicle;
 import com.iov.platform.modules.vehicle.mapper.VehicleMapper;
@@ -26,6 +25,7 @@ import static org.mockito.Mockito.*;
  * RealtimeService 单元测试
  * 含车辆存在性校验、plateNo 逻辑、字段范围校验等
  */
+@SuppressWarnings({"null", "unchecked"})
 class RealtimeServiceTest {
 
     private StringRedisTemplate redis;

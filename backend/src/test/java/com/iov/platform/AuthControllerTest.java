@@ -14,8 +14,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import com.iov.platform.modules.vehicle.mapper.VehicleMapper;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -38,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@SuppressWarnings({"null", "unchecked"})
 class AuthControllerTest {
 
     @Autowired
@@ -52,13 +53,13 @@ class AuthControllerTest {
     @Autowired
     private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
 
-    @MockBean
+    @MockitoBean
     private VehicleMapper vehicleMapper;
 
-    @MockBean
+    @MockitoBean
     private StringRedisTemplate stringRedisTemplate;
 
-    @MockBean
+    @MockitoBean
     private SimpMessagingTemplate simpMessagingTemplate;
 
     @BeforeEach

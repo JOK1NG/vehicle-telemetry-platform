@@ -14,8 +14,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -47,6 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 })
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@SuppressWarnings({"null", "unchecked"})
 class VehicleControllerTest {
 
     @Autowired
@@ -61,16 +62,16 @@ class VehicleControllerTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    @MockBean
+    @MockitoBean
     private VehicleMapper vehicleMapper;
 
-    @MockBean
+    @MockitoBean
     private VehicleService vehicleService;
 
-    @MockBean
+    @MockitoBean
     private StringRedisTemplate stringRedisTemplate;
 
-    @MockBean
+    @MockitoBean
     private SimpMessagingTemplate simpMessagingTemplate;
 
     private String adminToken;

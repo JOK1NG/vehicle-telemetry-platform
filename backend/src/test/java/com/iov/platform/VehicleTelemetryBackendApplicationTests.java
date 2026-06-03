@@ -2,8 +2,8 @@ package com.iov.platform;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import com.iov.platform.modules.vehicle.mapper.VehicleMapper;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -20,15 +20,16 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
     "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration"
 })
 @ActiveProfiles("test")
+@SuppressWarnings({"null", "unchecked"})
 class VehicleTelemetryBackendApplicationTests {
 
-    @MockBean
+    @MockitoBean
     private VehicleMapper vehicleMapper;
 
-    @MockBean
+    @MockitoBean
     private StringRedisTemplate stringRedisTemplate;
 
-    @MockBean
+    @MockitoBean
     private SimpMessagingTemplate simpMessagingTemplate;
 
     @Test

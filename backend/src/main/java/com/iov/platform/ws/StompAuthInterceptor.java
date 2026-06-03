@@ -52,8 +52,9 @@ public class StompAuthInterceptor implements ChannelInterceptor {
             }
 
             // 3. 回退：从 SockJS 握手 URL query 参数中获取 token（通过 simpSessionAttributes 传递）
-            if (!StringUtils.hasText(token) && accessor.getSessionAttributes() != null) {
-                Object queryToken = accessor.getSessionAttributes().get("token");
+            var sessionAttributes = accessor.getSessionAttributes();
+            if (!StringUtils.hasText(token) && sessionAttributes != null) {
+                Object queryToken = sessionAttributes.get("token");
                 if (queryToken instanceof String queryStr && StringUtils.hasText(queryStr)) {
                     token = queryStr;
                 }
