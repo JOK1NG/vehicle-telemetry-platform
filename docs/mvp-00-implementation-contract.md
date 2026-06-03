@@ -12,10 +12,11 @@
 | 组件 | 版本 | 说明 |
 |---|---|---|
 | JDK | **17 (LTS)** | Spring Boot 3.x 最低要求，生态最成熟 |
-| Spring Boot | **3.4.13** | 3.4.x 最新补丁版本，稳定 + 社区资料丰富 |
+| Spring Boot | **3.5.14** | 3.5.x 稳定版 |
 | Maven | **3.9+**（wrapper 锁定） | 设计文档指定 Maven 多模块 |
 | Flyway | **随 spring-boot-starter 引入** | DB 迁移工具，比 Liquibase 轻量，MVP 够用 |
-| MyBatis-Plus | **3.5.x** | 与 Spring Boot 3.4 兼容的最新稳定版 |
+| MyBatis-Plus | **3.5.7** | 与 Spring Boot 3.5 兼容的最新稳定版 |
+| JWT | **jjwt 0.12.6** | 签发与校验 |
 
 ### 1.2 前端
 
@@ -23,10 +24,13 @@
 |---|---|---|
 | Node.js | **22 LTS** | 当前活跃 LTS 版本 |
 | 包管理器 | **npm**（随 Node 自带） | 学习项目简单起见，后续可切 pnpm |
-| Vue | **3.5+** | Composition API + `<script setup>` 稳定版 |
+| React | **18.3+** | 函数组件 + Hooks |
 | Vite | **6.x** | 当前最新稳定 |
-| TypeScript | **5.x** | Vite 6.x 配套 |
-| Element Plus | **2.9+** | Vue 3 组件库 |
+| TypeScript | **~5.8** | Vite 6.x 配套 |
+| 状态管理 | **Zustand 4.5** | 轻量状态管理 |
+| CSS | **Tailwind CSS 4** | 原子化 CSS |
+| 路由 | **react-router-dom 6.26** | SPA 路由 |
+| HTTP 客户端 | **Axios 1.7** | 含 JWT 拦截器 |
 | 高德地图 | **@amap/amap-jsapi-loader 1.x** | JS API 2.0 动态加载器 |
 
 ### 1.3 Docker 镜像
@@ -35,15 +39,16 @@
 |---|---|---|
 | EMQX | `emqx/emqx:5.8.8` | 5.x LTS 稳定版，端口 1883/18083 |
 | TimescaleDB | `timescale/timescaledb-ha:pg16` | **含 PostGIS**，一个镜像全搞定 |
-| Redis | `redis:7-alpine` | 轻量镜像 |
+| Redis | `redis:7` | 开启 AOF 持久化 |
 
 > ⚠️ **重要**：必须用 `timescaledb-ha` 而非 `timescaledb`。后者不含 PostGIS，地理围栏功能会缺依赖。
 
 ### 1.4 数据库迁移
 
 - 使用 **Flyway**，SQL 脚本放 `src/main/resources/db/migration/`
-- 命名约定：`V1__create_vehicle.sql`、`V2__create_telemery_hypertable.sql` ...
-- TimescaleDB 的 `create_hypertable` 和 PostGIS 的 `CREATE EXTENSION postgis;` 在第一个迁移脚本中执行
+- 命名约定：`V1__init_schema.sql`、`V2__seed_users.sql`、`V3__fix_seed_passwords.sql`、`V4__seed_demo_vehicles.sql`
+- `CREATE EXTENSION postgis;` 和 `CREATE EXTENSION timescaledb;` 由 Docker 初始化脚本 `docker/init-db/01-init-extensions.sql` 执行
+- TimescaleDB 的 `create_hypertable` 在 V1 迁移脚本中执行（含 `if_not_exists => true` 保证幂等）
 - 初始用户数据（ADMIN/VIEWER）也在迁移脚本中插入
 
 ---
@@ -77,12 +82,12 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `ts` | string (ISO 8601 UTC) | ✅ | 遥测时间戳，毫秒精度 |
-| `lng` | double | ✅ | 经度，**GCJ-02 坐标系** |
-| `lat` | double | ✅ | 纬度，**GCJ-02 坐标系** |
-| `speed` | double | ✅ | 速度 km/h |
-| `heading` | double | ✅ | 航向角 0–360° |
-| `battery` | double | ✅ | 电量 0–100% |
+| `ts` | string (ISO 8601 UTC) | ✅ | 遥测时间戳，毫秒精度（无效时拒绝消息） |
+| `lng` | double | ✅ | 经度，**GCJ-02 坐标系**（缺失时拒绝消息） |
+| `lat` | double | ✅ | 纬度，**GCJ-02 坐标系**（缺失时拒绝消息） |
+| `speed` | double | ⚪ | 速度 km/h（缺失时默认 0） |
+| `heading` | double | ⚪ | 航向角 0–360°（缺失时默认 0） |
+| `battery` | double | ⚪ | 电量 0–100%（缺失时默认 0） |
 | `faultCode` | string? | ❌ | 故障码，无故障传 null 或不传 |
 
 ---
@@ -209,8 +214,8 @@ VITE_AMAP_SECURITY_JS_CODE=你的安全密钥
 
 | 角色 | 权限 |
 |---|---|
-| **ADMIN** | 登录 + 车辆 CRUD + 告警处理 + 监控大屏 |
-| **VIEWER** | 登录 + 只读（监控大屏 + 车辆列表 + 轨迹回放） |
+| **ADMIN** | 登录 + 车辆 CRUD + 监控大屏 |
+| **VIEWER** | 登录 + 只读（监控大屏 + 车辆列表） |
 
 - JWT payload 中携带 `role` 字段
 - Spring Security 按 role 做接口级鉴权
@@ -239,9 +244,11 @@ VITE_AMAP_SECURITY_JS_CODE=你的安全密钥
 |---|---|---|---|
 | `vehicle:rt:{id}` | Hash | lng, lat, speed, heading, battery, ts | 10s |
 | `vehicle:online` | Set | 在线 vehicleId 集合 | — |
-| `alert:latest` | List | 最近 N 条告警 JSON | — |
+| `vehicle:meta:{id}` | String | plateNo,status 缓存（防击穿） | 24h |
+| `alert:latest` | List | 最近 N 条告警 JSON（M4+） | — |
 
 > `vehicle:rt:{id}` 的 10s TTL 既做在线判定也做数据过期。后端每收到一条 MQTT 消息就刷新 TTL。
+> `vehicle:meta:{id}` 用于 RealtimeService 和 RealtimeController 中避免每条消息都 DB 查询 plateNo/status，采用 Cache-Aside 模式。
 
 ---
 
@@ -249,18 +256,22 @@ VITE_AMAP_SECURITY_JS_CODE=你的安全密钥
 
 ### ✅ 已确认
 
-1. JDK 17 + Spring Boot 3.4.13 + Maven 3.9+
-2. TimescaleDB-HA（含 PostGIS）而非纯 TimescaleDB
-3. Flyway 做 DB 迁移
-4. MQTT topic 用自增 vehicleId（MVP 简化）
-5. 全链路 GCJ-02 坐标系，模拟器源头生成
-6. RBAC 两个角色：ADMIN / VIEWER
-7. WebSocket `/topic/vehicles` 用 500ms 节流广播
-8. 需要 `/api/vehicles/snapshot` 快照接口
+1. JDK 17 + Spring Boot 3.5.14 + Maven 3.9+
+2. 前端 React 18 + TypeScript + Zustand + Tailwind CSS 4
+3. TimescaleDB-HA（含 PostGIS）而非纯 TimescaleDB
+4. Flyway 做 DB 迁移（V1 建表、V2 初始用户、V3 修正密码哈希、V4 种子车辆）
+5. MQTT topic 用自增 vehicleId（MVP 简化）
+6. 全链路 GCJ-02 坐标系，模拟器源头生成
+7. RBAC 两个角色：ADMIN / VIEWER
+8. WebSocket `/topic/vehicles` 用 500ms 节流广播
+9. `/api/vehicles/snapshot` 快照接口（Cache-Aside + Multi-Get Redis 缓存优化）
+10. JWT 校验：`sub`=userId, `username`, `role`（jjwt 0.12.6）
 
 ### ❌ 不在 MVP 范围
 
-- 历史轨迹回放、地理围栏、Kafka、轨迹抽稀、多车压测、CI/CD、复杂报表、复杂 ECharts 大屏
-- 车辆 ID 用 VIN/UUID 映射（MVP 用自增 ID 即可）
+- 历史轨迹回放、地理围栏、Kafka、轨迹抽稀、多车压测（设计文档 M3-M5）
+- 告警引擎（`alert` 表已创建但引擎未实现）
 - 角色管理 UI
-- 详细的速率限制和 API 网关
+- `alert:latest` Redis 键
+- 前端 ECharts 大屏、告警页面、轨迹回放页面
+- CI/CD（仅前端 typecheck+build CI 已配置）

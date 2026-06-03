@@ -49,3 +49,4 @@ vehicle-telemetry-platform/
 # MagicPath canvas scaffold residue (CLI may regenerate in repo root)
 /src/
 /magicpath-code.json
+.commandcode/taste/taste.md
