@@ -20,7 +20,6 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
     "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration"
 })
 @ActiveProfiles("test")
-@SuppressWarnings({"null", "unchecked"})
 class VehicleTelemetryBackendApplicationTests {
 
     @MockitoBean

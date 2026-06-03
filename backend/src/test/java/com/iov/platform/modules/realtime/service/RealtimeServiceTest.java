@@ -122,7 +122,6 @@ class RealtimeServiceTest {
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
         verify(messagingTemplate).convertAndSend(eq("/topic/vehicles"), captor.capture());
         Map<String, Object> envelope = captor.getValue();
-        @SuppressWarnings("unchecked")
         List<VehicleUpdateMessage> vehicles = (List<VehicleUpdateMessage>) envelope.get("vehicles");
         assertNotNull(vehicles);
         assertEquals(1, vehicles.size());
@@ -156,7 +155,6 @@ class RealtimeServiceTest {
         service.flushBuffer();
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
         verify(messagingTemplate).convertAndSend(eq("/topic/vehicles"), captor.capture());
-        @SuppressWarnings("unchecked")
         List<VehicleUpdateMessage> vehicles = (List<VehicleUpdateMessage>) captor.getValue().get("vehicles");
         assertNotNull(vehicles);
         assertEquals(1, vehicles.size());
@@ -200,7 +198,6 @@ class RealtimeServiceTest {
 
         ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
         verify(messagingTemplate).convertAndSend(eq("/topic/vehicles"), captor.capture());
-        @SuppressWarnings("unchecked")
         List<VehicleUpdateMessage> vehicles = (List<VehicleUpdateMessage>) captor.getValue().get("vehicles");
         assertNotNull(vehicles);
         assertEquals(1, vehicles.size());

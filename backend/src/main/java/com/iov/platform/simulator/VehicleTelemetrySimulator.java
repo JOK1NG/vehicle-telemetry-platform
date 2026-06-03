@@ -102,6 +102,7 @@ public class VehicleTelemetrySimulator {
         }
     }
 
+    @SuppressWarnings("null")
     private void publishVehicle(Vehicle vehicle) {
         SimulatedVehicleState state = states.computeIfAbsent(vehicle.getId(), this::initialState);
         state.advance(intervalMs);
