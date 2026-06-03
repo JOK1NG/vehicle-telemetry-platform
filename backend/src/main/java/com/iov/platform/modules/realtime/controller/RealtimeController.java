@@ -2,8 +2,7 @@ package com.iov.platform.modules.realtime.controller;
 
 import com.iov.platform.common.Result;
 import com.iov.platform.modules.realtime.dto.VehicleSnapshot;
-import com.iov.platform.modules.vehicle.entity.Vehicle;
-import com.iov.platform.modules.vehicle.mapper.VehicleMapper;
+import com.iov.platform.modules.vehicle.service.VehicleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -19,9 +18,7 @@ import java.util.Set;
  * 实时数据接口
  * GET /api/vehicles/snapshot - 车辆实时快照
  *
- * 安全修复（MUL-39）：status 不再写死 1，从 vehicle 表取真实值
- * TODO(tech-debt): 快照接口对每个在线车辆逐条 selectById 查询 plateNo 和 status，
- * 100 辆车 = 200 次 DB 查询。MVP 阶段可接受，后续应改为批量查询或 Redis 缓存。
+ * 优化：采用 Redis 缓存（Cache-Aside / Multi-Get 批量缓存拉取），解决 DB N+1 查询，支持生产环境高并发。
  */
 @RestController
 @Slf4j
@@ -29,7 +26,7 @@ import java.util.Set;
 public class RealtimeController {
 
     private final StringRedisTemplate redis;
-    private final VehicleMapper vehicleMapper;
+    private final VehicleService vehicleService;
 
     @GetMapping("/api/vehicles/snapshot")
     public Result<List<VehicleSnapshot>> snapshot() {
@@ -37,6 +34,23 @@ public class RealtimeController {
         if (onlineIds == null || onlineIds.isEmpty()) {
             return Result.ok(List.of());
         }
+
+        // 收集所有合法的车辆 ID，准备进行 Redis 批量获取
+        List<Long> vehicleIds = new ArrayList<>();
+        for (String idStr : onlineIds) {
+            try {
+                vehicleIds.add(Long.parseLong(idStr));
+            } catch (NumberFormatException e) {
+                log.warn("vehicle:online 中包含非法 ID: {}", idStr);
+            }
+        }
+
+        if (vehicleIds.isEmpty()) {
+            return Result.ok(List.of());
+        }
+
+        // 从 Redis 缓存批量拉取车辆基础数据 (MGET)，未命中的车辆懒加载加载到缓存中
+        Map<Long, String> vehicleMetaMap = vehicleService.getVehicleMetaCacheBatch(vehicleIds);
 
         List<VehicleSnapshot> snapshots = new ArrayList<>();
 
@@ -50,17 +64,22 @@ public class RealtimeController {
                     continue;  // TTL 已过期，由 RealtimeService 定时清理
                 }
 
-                // 查询车辆 plateNo 和 status（N+1 — MVP 接受）
+                // 从缓存元数据中获取 plateNo 和 status
                 String plateNo = "";
                 int status = 0;  // 默认离线
-                try {
-                    Vehicle vehicle = vehicleMapper.selectById(vehicleId);
-                    if (vehicle != null) {
-                        plateNo = vehicle.getPlateNo() != null ? vehicle.getPlateNo() : "";
-                        status = vehicle.getStatus() != null ? vehicle.getStatus() : 0;
+                String cachedVal = vehicleMetaMap.get(vehicleId);
+                if (cachedVal != null) {
+                    String[] parts = cachedVal.split(",", 2);
+                    if (parts.length >= 1) {
+                        plateNo = parts[0];
                     }
-                } catch (Exception e) {
-                    log.debug("查询车辆失败 vehicleId={}: {}", vehicleId, e.getMessage());
+                    if (parts.length >= 2) {
+                        try {
+                            status = Integer.parseInt(parts[1]);
+                        } catch (NumberFormatException e) {
+                            status = 0;
+                        }
+                    }
                 }
 
                 // 既然在 vehicle:online 集合中且有实时数据，覆盖为在线状态

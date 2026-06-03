@@ -15,12 +15,12 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 实时遥测处理服务
@@ -73,6 +73,7 @@ public class RealtimeService {
     /**
      * 处理一条 MQTT 遥测消息
      */
+    @SuppressWarnings("null")
     public void handleTelemetry(Message<?> message) {
         String topic = (String) message.getHeaders().get(MqttHeaders.RECEIVED_TOPIC);
         String payload = (String) message.getPayload();
@@ -130,7 +131,7 @@ public class RealtimeService {
         rtData.put("battery", String.valueOf(tm.getBattery() != null ? tm.getBattery() : 0));
         rtData.put("ts", tm.getTs());
         redis.opsForHash().putAll(rtKey, rtData);
-        redis.expire(rtKey, Duration.ofSeconds(10));
+        redis.expire(rtKey, java.time.Duration.ofSeconds(10));
 
         // 2. 标记在线
         redis.opsForSet().add("vehicle:online", String.valueOf(vehicleId));
@@ -152,9 +153,25 @@ public class RealtimeService {
             log.error("写入 telemetry 表失败 vehicleId={}: {}", vehicleId, e.getMessage());
         }
 
-        // 4. 获取 plateNo 和 status
-        String plateNo = getPlateNo(vehicleId);
-        int status = getVehicleStatus(vehicleId);
+        // 4. 获取 plateNo 和 status（采用 Redis 缓存防击穿）
+        String plateNo = "";
+        int status = 0;  // 默认离线
+        String cachedVal = getVehicleMetaFromCache(vehicleId);
+        if (cachedVal != null) {
+            String[] parts = cachedVal.split(",", 2);
+            if (parts.length >= 1) {
+                plateNo = parts[0];
+            }
+            if (parts.length >= 2) {
+                try {
+                    status = Integer.parseInt(parts[1]);
+                } catch (NumberFormatException e) {
+                    status = 0;
+                }
+            }
+        } else {
+            status = 1; // 兜底：在线车辆默认状态为 1
+        }
 
         // 5. 放入节流缓冲区
         buffer.put(vehicleId, new VehicleUpdateMessage(
@@ -277,36 +294,41 @@ public class RealtimeService {
         }
     }
 
-    // ---- plateNo 和 status 查询（含 buffer 复用优化） ----
+    // ---- plateNo 和 status 查询（Redis 缓存优化，防击穿） ----
 
-    private String getPlateNo(Long vehicleId) {
-        // 优先复用 buffer 中已有记录的 plateNo，避免重复查库
+    private String getVehicleMetaFromCache(Long vehicleId) {
+        // 优先从 buffer 获取，避免重复请求 Redis
         VehicleUpdateMessage existing = buffer.get(vehicleId);
         if (existing != null && existing.getPlateNo() != null && !existing.getPlateNo().isEmpty()) {
-            return existing.getPlateNo();
+            return existing.getPlateNo() + "," + existing.getStatus();
         }
 
+        String key = "vehicle:meta:" + vehicleId;
         try {
-            Vehicle vehicle = vehicleMapper.selectById(vehicleId);
-            if (vehicle != null && vehicle.getPlateNo() != null) {
-                return vehicle.getPlateNo();
+            String val = redis.opsForValue().get(key);
+            if (val != null) {
+                return val;
             }
         } catch (Exception e) {
-            log.warn("查询车辆 plateNo 失败 vehicleId={}: {}", vehicleId, e.getMessage());
+            log.error("从 Redis 获取车辆基础缓存失败 vehicleId={}", vehicleId, e);
         }
-        return "";
-    }
 
-    private int getVehicleStatus(Long vehicleId) {
+        // 缓存未命中，从DB查询并写回缓存
         try {
             Vehicle vehicle = vehicleMapper.selectById(vehicleId);
-            if (vehicle != null && vehicle.getStatus() != null) {
-                return vehicle.getStatus();
+            if (vehicle != null) {
+                String newVal = (vehicle.getPlateNo() != null ? vehicle.getPlateNo() : "") + "," + (vehicle.getStatus() != null ? vehicle.getStatus() : 0);
+                try {
+                    redis.opsForValue().set(key, newVal, 24L, TimeUnit.HOURS);
+                } catch (Exception ex) {
+                    log.error("写入车辆基础缓存失败 vehicleId={}", vehicleId, ex);
+                }
+                return newVal;
             }
         } catch (Exception e) {
-            log.warn("查询车辆 status 失败 vehicleId={}: {}", vehicleId, e.getMessage());
+            log.warn("从DB查询并缓存车辆元数据失败 vehicleId={}: {}", vehicleId, e.getMessage());
         }
-        return 1; // 在线车辆默认 status=1
+        return null;
     }
 
     // ---- 工具方法 ----

@@ -16,6 +16,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -60,6 +66,16 @@ public class VehicleServiceImpl extends ServiceImpl<VehicleMapper, Vehicle> impl
         vehicle.setUpdatedAt(OffsetDateTime.now());
 
         save(vehicle);
+
+        // 新增车辆，写入基础数据 Redis 缓存
+        try {
+            String key = "vehicle:meta:" + vehicle.getId();
+            String val = vehicle.getPlateNo() + ",0";
+            redis.opsForValue().set(key, val, 24L, TimeUnit.HOURS);
+        } catch (Exception e) {
+            log.error("写入车辆基础缓存失败 vehicleId={}", vehicle.getId(), e);
+        }
+
         return vehicle;
     }
 
@@ -91,6 +107,15 @@ public class VehicleServiceImpl extends ServiceImpl<VehicleMapper, Vehicle> impl
         exist.setUpdatedAt(OffsetDateTime.now());
 
         updateById(exist);
+
+        // 更新车辆，清理 Redis 中的基础元数据缓存（Cache-Aside 经典失效策略）
+        try {
+            String key = "vehicle:meta:" + id;
+            redis.delete(key);
+        } catch (Exception e) {
+            log.error("清理车辆基础缓存失败 vehicleId={}", id, e);
+        }
+
         return exist;
     }
 
@@ -107,6 +132,96 @@ public class VehicleServiceImpl extends ServiceImpl<VehicleMapper, Vehicle> impl
         redis.delete(rtKey);
         redis.opsForSet().remove("vehicle:online", String.valueOf(id));
 
+        // 清理车辆基础元数据缓存
+        try {
+            String key = "vehicle:meta:" + id;
+            redis.delete(key);
+        } catch (Exception e) {
+            log.error("清理车辆基础缓存失败 vehicleId={}", id, e);
+        }
+
         return removeById(id);
+    }
+
+    @Override
+    public String getVehicleMetaCache(Long id) {
+        if (id == null) {
+            return null;
+        }
+        String key = "vehicle:meta:" + id;
+        try {
+            String cached = redis.opsForValue().get(key);
+            if (cached != null) {
+                return cached;
+            }
+        } catch (Exception e) {
+            log.error("从 Redis 获取车辆基础缓存失败 vehicleId={}", id, e);
+        }
+
+        // 缓存未命中，查库并写回缓存
+        Vehicle vehicle = getById(id);
+        if (vehicle != null) {
+            String val = (vehicle.getPlateNo() != null ? vehicle.getPlateNo() : "") + "," + (vehicle.getStatus() != null ? vehicle.getStatus() : 0);
+            try {
+                redis.opsForValue().set(key, val, 24L, TimeUnit.HOURS);
+            } catch (Exception e) {
+                log.error("写入车辆基础缓存失败 vehicleId={}", id, e);
+            }
+            return val;
+        }
+        return null;
+    }
+
+    @Override
+    public Map<Long, String> getVehicleMetaCacheBatch(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        List<String> keys = ids.stream().map(id -> "vehicle:meta:" + id).toList();
+        List<String> cachedValues = null;
+        try {
+            cachedValues = redis.opsForValue().multiGet(java.util.Objects.requireNonNull(keys));
+        } catch (Exception e) {
+            log.error("从 Redis 批量获取车辆基础缓存失败", e);
+        }
+
+        Map<Long, String> result = new HashMap<>();
+        List<Long> missIds = new ArrayList<>();
+
+        for (int i = 0; i < ids.size(); i++) {
+            Long id = ids.get(i);
+            String val = cachedValues != null && cachedValues.size() > i ? cachedValues.get(i) : null;
+            if (val != null) {
+                result.put(id, val);
+            } else {
+                missIds.add(id);
+            }
+        }
+
+        if (!missIds.isEmpty()) {
+            try {
+                // 批量从数据库加载
+                List<Vehicle> vehicles = baseMapper.selectBatchIds(missIds);
+                if (vehicles != null) {
+                    for (Vehicle vehicle : vehicles) {
+                        if (vehicle != null && vehicle.getId() != null) {
+                            String val = (vehicle.getPlateNo() != null ? vehicle.getPlateNo() : "") + "," + (vehicle.getStatus() != null ? vehicle.getStatus() : 0);
+                            result.put(vehicle.getId(), val);
+                            String key = "vehicle:meta:" + vehicle.getId();
+                            try {
+                                redis.opsForValue().set(key, val, 24L, TimeUnit.HOURS);
+                            } catch (Exception e) {
+                                log.error("写入车辆基础缓存失败 vehicleId={}", vehicle.getId(), e);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.error("批量从DB加载车辆基础数据并缓存失败", e);
+            }
+        }
+
+        return result;
     }
 }
