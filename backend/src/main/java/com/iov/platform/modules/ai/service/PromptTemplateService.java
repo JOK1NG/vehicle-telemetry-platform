@@ -32,7 +32,7 @@ public class PromptTemplateService {
             - 不要假设输入中不存在的内容。
             - 识别潜在问题：异常趋势、告警遗漏、不合理数据等。
             - 使用 JSON 输出，包含 summary（页面摘要）、severity（严重级别：LOW/MEDIUM/HIGH/CRITICAL）、
-              findings（发现列表）、recommendations（建议下一步查看哪些数据或执行什么操作）。
+              findings（发现对象列表，每项包含 type、description、detail）、recommendations（建议下一步查看哪些数据或执行什么操作）。
             - 所有结论仅供辅助参考。"""
     );
 

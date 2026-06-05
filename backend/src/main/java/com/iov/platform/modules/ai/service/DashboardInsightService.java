@@ -18,6 +18,7 @@ import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
 
 import java.util.Base64;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -53,14 +54,25 @@ public class DashboardInsightService {
         String model = dashboardModel();
         boolean useImageInput = shouldUseImageInput(model);
         long start = System.currentTimeMillis();
+        long screenshotMs = 0;
+        long contextMs = 0;
+        long modelMs = 0;
+        long parseMs = 0;
 
         try {
             assertApiKeyConfigured();
             ChatResponse response;
             String textContext;
             if (useImageInput) {
+                long screenshotStart = System.currentTimeMillis();
                 byte[] imageBytes = getDashboardImageBytes(request, authorizationHeader, user);
+                screenshotMs = System.currentTimeMillis() - screenshotStart;
+
+                long contextStart = System.currentTimeMillis();
                 textContext = buildContext(request, null, true);
+                contextMs = System.currentTimeMillis() - contextStart;
+
+                long modelStart = System.currentTimeMillis();
                 response = chatClientBuilder.build().prompt()
                         .system(systemPrompt)
                         .user(u -> u
@@ -70,15 +82,24 @@ public class DashboardInsightService {
                         .options(OpenAiChatOptions.builder().model(model).build())
                         .call()
                         .chatResponse();
+                modelMs = System.currentTimeMillis() - modelStart;
             } else {
+                long screenshotStart = System.currentTimeMillis();
                 String visibleText = getDashboardVisibleText(request, authorizationHeader, user);
+                screenshotMs = System.currentTimeMillis() - screenshotStart;
+
+                long contextStart = System.currentTimeMillis();
                 textContext = buildContext(request, visibleText, false);
+                contextMs = System.currentTimeMillis() - contextStart;
+
+                long modelStart = System.currentTimeMillis();
                 response = chatClientBuilder.build().prompt()
                         .system(systemPrompt)
                         .user(textContext)
                         .options(OpenAiChatOptions.builder().model(model).build())
                         .call()
                         .chatResponse();
+                modelMs = System.currentTimeMillis() - modelStart;
             }
 
             String result = response.getResult().getOutput().getText();
@@ -92,7 +113,13 @@ public class DashboardInsightService {
                     (useImageInput ? "image+" : "text+") + textContext.length() + "chars",
                     truncate(result, 500), true, (int) latency, (int) tokens, userId);
 
-            return parseResponse(result, latency);
+            long parseStart = System.currentTimeMillis();
+            DashboardInsightResponse parsed = parseResponse(result, latency);
+            parseMs = System.currentTimeMillis() - parseStart;
+            long totalLatency = System.currentTimeMillis() - start;
+            parsed.setLatencyMs(totalLatency);
+            parsed.setTiming(timing(screenshotMs, contextMs, modelMs, parseMs, totalLatency, useImageInput));
+            return parsed;
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - start;
             log.error("Dashboard insight failed", e);
@@ -102,6 +129,7 @@ public class DashboardInsightService {
                     .findings(List.of())
                     .recommendations(List.of())
                     .latencyMs(latency)
+                    .timing(timing(screenshotMs, contextMs, modelMs, parseMs, latency, useImageInput))
                     .build();
         }
     }
@@ -198,7 +226,7 @@ public class DashboardInsightService {
             return DashboardInsightResponse.builder()
                     .summary(stringField(parsed, "summary"))
                     .severity(stringField(parsed, "severity"))
-                    .findings(stringListField(parsed, "findings"))
+                    .findings(findingListField(parsed, "findings"))
                     .recommendations(stringListField(parsed, "recommendations"))
                     .latencyMs(latencyMs)
                     .build();
@@ -226,6 +254,50 @@ public class DashboardInsightService {
             return list.stream().map(Object::toString).toList();
         }
         return List.of();
+    }
+
+    private List<DashboardInsightResponse.DashboardFinding> findingListField(Map<String, Object> map, String key) {
+        Object v = map.get(key);
+        if (!(v instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream()
+                .map(this::toFinding)
+                .toList();
+    }
+
+    private DashboardInsightResponse.DashboardFinding toFinding(Object item) {
+        if (item instanceof Map<?, ?> rawMap) {
+            Map<String, Object> finding = new LinkedHashMap<>();
+            rawMap.forEach((k, v) -> finding.put(String.valueOf(k), v));
+            return DashboardInsightResponse.DashboardFinding.builder()
+                    .type(stringField(finding, "type"))
+                    .description(stringField(finding, "description"))
+                    .detail(stringField(finding, "detail"))
+                    .build();
+        }
+        return DashboardInsightResponse.DashboardFinding.builder()
+                .type("OBSERVATION")
+                .description(item != null ? item.toString() : "")
+                .detail("")
+                .build();
+    }
+
+    private static DashboardInsightResponse.Timing timing(
+            long screenshotMs,
+            long contextMs,
+            long modelMs,
+            long parseMs,
+            long totalMs,
+            boolean imageInput) {
+        return DashboardInsightResponse.Timing.builder()
+                .screenshotMs(screenshotMs)
+                .contextMs(contextMs)
+                .modelMs(modelMs)
+                .parseMs(parseMs)
+                .totalMs(totalMs)
+                .imageInput(imageInput)
+                .build();
     }
 
     private static String truncate(String s, int maxLen) {

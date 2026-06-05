@@ -18,6 +18,8 @@ const severityBg: Record<string, string> = {
   CRITICAL: 'bg-[var(--destructive)]/10 border-[var(--destructive)]/25',
 };
 
+const formatMs = (ms?: number) => `${Math.round(ms ?? 0)}ms`;
+
 export function AiInsightPanel({
   onlineCount,
   avgSpeed,
@@ -89,19 +91,31 @@ export function AiInsightPanel({
       </div>
 
       {result && !collapsed && (
-        <div className="px-4 pb-4 space-y-3 border-t border-[var(--border)] pt-3">
-          <p className="text-[12px] leading-relaxed">{result.summary}</p>
+        <div className="px-4 pb-4 space-y-4 border-t border-[var(--border)] pt-3">
+          <p className="text-[16px] leading-relaxed">{result.summary}</p>
 
           {result.findings.length > 0 && (
             <div>
-              <div className="text-[11px] font-semibold text-[var(--muted-foreground)] mb-1">
+              <div className="text-[13px] font-semibold text-[var(--muted-foreground)] mb-2">
                 发现
               </div>
-              <ul className="space-y-1">
+              <ul className="space-y-2">
                 {result.findings.map((f, i) => (
-                  <li key={i} className="text-[12px] flex gap-1.5">
+                  <li key={i} className="text-[16px] leading-relaxed flex gap-2">
                     <span className="text-[var(--muted-foreground)] shrink-0 mt-0.5">•</span>
-                    <span>{f}</span>
+                    <span>
+                      {f.type && (
+                        <span className="mr-2 rounded border border-[var(--border)] bg-[var(--muted)] px-1.5 py-0.5 text-[12px] font-semibold text-[var(--muted-foreground)]">
+                          {f.type}
+                        </span>
+                      )}
+                      <span>{f.description}</span>
+                      {f.detail && (
+                        <span className="block mt-1 text-[14px] text-[var(--muted-foreground)]">
+                          {f.detail}
+                        </span>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -110,12 +124,12 @@ export function AiInsightPanel({
 
           {result.recommendations.length > 0 && (
             <div>
-              <div className="text-[11px] font-semibold text-[var(--muted-foreground)] mb-1">
+              <div className="text-[13px] font-semibold text-[var(--muted-foreground)] mb-2">
                 建议
               </div>
-              <ul className="space-y-1">
+              <ul className="space-y-2">
                 {result.recommendations.map((r, i) => (
-                  <li key={i} className="text-[12px] flex gap-1.5">
+                  <li key={i} className="text-[16px] leading-relaxed flex gap-2">
                     <span className="text-[var(--muted-foreground)] shrink-0 mt-0.5">→</span>
                     <span>{r}</span>
                   </li>
@@ -124,8 +138,18 @@ export function AiInsightPanel({
             </div>
           )}
 
-          <div className="text-[10px] text-[var(--muted-foreground)]">
-            延迟 {result.latencyMs}ms · AI 结论仅供辅助参考
+          <div className="text-[12px] text-[var(--muted-foreground)]">
+            总耗时 {formatMs(result.timing?.totalMs ?? result.latencyMs)}
+            {result.timing && (
+              <>
+                {' '}· 截图 {formatMs(result.timing.screenshotMs)}
+                {' '}· 上下文 {formatMs(result.timing.contextMs)}
+                {' '}· 模型 {formatMs(result.timing.modelMs)}
+                {' '}· 解析 {formatMs(result.timing.parseMs)}
+                {' '}· {result.timing.imageInput ? '图片输入' : '文本输入'}
+              </>
+            )}
+            {' '}· AI 结论仅供辅助参考
           </div>
         </div>
       )}

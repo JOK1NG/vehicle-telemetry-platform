@@ -9,7 +9,9 @@ export const aiApi = {
     timeRange?: string;
     summaryStats?: Record<string, unknown>;
   }): Promise<DashboardInsightResponse> {
-    const res = await request.post('/api/ai/insights/dashboard', params);
+    const res = await request.post('/api/ai/insights/dashboard', params, {
+      timeout: 120000,
+    });
     return (res as unknown as ApiResult<DashboardInsightResponse>).data!;
   },
 };

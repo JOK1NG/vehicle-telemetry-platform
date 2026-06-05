@@ -57,7 +57,23 @@ export interface PageResult<T> {
 export interface DashboardInsightResponse {
   summary: string;
   severity: string;
-  findings: string[];
+  findings: DashboardFinding[];
   recommendations: string[];
   latencyMs: number;
+  timing?: DashboardInsightTiming;
+}
+
+export interface DashboardFinding {
+  type?: string;
+  description: string;
+  detail?: string;
+}
+
+export interface DashboardInsightTiming {
+  screenshotMs: number;
+  contextMs: number;
+  modelMs: number;
+  parseMs: number;
+  totalMs: number;
+  imageInput: boolean;
 }
