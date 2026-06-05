@@ -6,6 +6,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -16,8 +17,9 @@ public class ChatOrchestratorService {
     private final ChatClient.Builder chatClientBuilder;
     private final AiCallLogService logService;
 
-    public String chat(String scene, String model, String provider,
-                       String systemPrompt, String userMessage,
+    @SuppressWarnings("null")
+		public String chat(String scene, String model, String provider,
+                       String systemPrompt, @NonNull  String userMessage,
                        Long userId) {
         long start = System.currentTimeMillis();
         try {
