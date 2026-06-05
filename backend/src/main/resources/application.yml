@@ -28,6 +28,8 @@ spring:
 ai:
   vision:
     model: ${AI_VISION_MODEL:qwen3.7-plus}
+  dashboard-insight:
+    image-mode: ${AI_DASHBOARD_IMAGE_MODE:true}
   dashboard-screenshot:
     frontend-base-url: ${AI_DASHBOARD_FRONTEND_BASE_URL:http://localhost:5173}
     chrome-executable-path: ${AI_DASHBOARD_CHROME_PATH:/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
