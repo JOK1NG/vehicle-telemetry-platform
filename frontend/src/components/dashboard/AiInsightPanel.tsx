@@ -143,9 +143,7 @@ export function AiInsightPanel({
             {result.timing && (
               <>
                 {' '}· 截图 {formatMs(result.timing.screenshotMs)}
-                {' '}· 上下文 {formatMs(result.timing.contextMs)}
                 {' '}· 模型 {formatMs(result.timing.modelMs)}
-                {' '}· 解析 {formatMs(result.timing.parseMs)}
                 {' '}· {result.timing.imageInput ? '图片输入' : '文本输入'}
               </>
             )}

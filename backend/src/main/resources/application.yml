@@ -29,6 +29,14 @@ ai:
   vision:
     model: ${AI_VISION_MODEL:qwen3.7-plus}
   dashboard-insight:
+    provider: ${AI_DASHBOARD_PROVIDER:qwen}
+    api-key: ${AI_DASHBOARD_API_KEY:${AI_QWEN_API_KEY:}}
+    base-url: ${AI_DASHBOARD_BASE_URL:${AI_QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}}
+    model: ${AI_DASHBOARD_MODEL:${AI_VISION_MODEL:qwen3.7-plus}}
+    temperature: ${AI_DASHBOARD_TEMPERATURE:0.2}
+    max-tokens: ${AI_DASHBOARD_MAX_TOKENS:1200}
+    response-format: ${AI_DASHBOARD_RESPONSE_FORMAT:}
+    reasoning-effort: ${AI_DASHBOARD_REASONING_EFFORT:}
     image-mode: ${AI_DASHBOARD_IMAGE_MODE:true}
   dashboard-screenshot:
     frontend-base-url: ${AI_DASHBOARD_FRONTEND_BASE_URL:http://localhost:5173}
