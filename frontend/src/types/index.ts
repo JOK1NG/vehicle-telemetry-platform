@@ -53,3 +53,11 @@ export interface PageResult<T> {
   size: number;
   current: number;
 }
+
+export interface DashboardInsightResponse {
+  summary: string;
+  severity: string;
+  findings: string[];
+  recommendations: string[];
+  latencyMs: number;
+}

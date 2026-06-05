@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Profile;
 
 @Configuration
 @Profile("!test")
-@MapperScan("com.iov.platform.modules.vehicle.mapper")
+@MapperScan({"com.iov.platform.modules.vehicle.mapper", "com.iov.platform.modules.ai.mapper"})
 public class MybatisPlusConfig {
 
     @Bean

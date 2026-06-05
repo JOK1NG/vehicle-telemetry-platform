@@ -16,6 +16,7 @@ import {
 } from '../common/Icons';
 import { cx, fmtNum, fmtTime } from '../common/utils';
 import { TelemetryMap, focusMapOnVehicle } from './TelemetryMap';
+import { AiInsightPanel } from './AiInsightPanel';
 import { RealtimeList } from './RealtimeList';
 
 export function DashboardView() {
@@ -183,6 +184,12 @@ export function DashboardView() {
           />
         </div>
       </div>
+
+      <AiInsightPanel
+        onlineCount={online.length}
+        avgSpeed={avgSpeed}
+        avgBattery={avgBattery}
+      />
     </div>
   );
 }

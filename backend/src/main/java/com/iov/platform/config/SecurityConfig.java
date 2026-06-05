@@ -86,6 +86,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // 认证接口无需认证
                 .requestMatchers("/api/auth/login").permitAll()
+                // AI ping 测试接口无需认证（Phase 0）
+                .requestMatchers(HttpMethod.POST, "/api/ai/ping").permitAll()
+
                 // 健康检查
                 .requestMatchers("/health").permitAll()
                 // Actuator：仅暴露 health（不含 details）和 info
