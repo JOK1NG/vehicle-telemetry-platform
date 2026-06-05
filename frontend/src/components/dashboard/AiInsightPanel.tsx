@@ -121,7 +121,7 @@ export function AiInsightPanel({
 
           {result.findings.length > 0 && (
             <div>
-              <div className="text-[13px] font-semibold text-[var(--muted-foreground)] mb-2">
+              <div className="text-[16px] font-bold text-[var(--muted-foreground)] mb-2">
                 发现
               </div>
               <ul className="space-y-2">
@@ -149,7 +149,7 @@ export function AiInsightPanel({
 
           {result.recommendations.length > 0 && (
             <div>
-              <div className="text-[13px] font-semibold text-[var(--muted-foreground)] mb-2">
+              <div className="text-[16px] font-bold text-[var(--muted-foreground)] mb-2">
                 建议
               </div>
               <ul className="space-y-2">
