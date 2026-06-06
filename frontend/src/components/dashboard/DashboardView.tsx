@@ -163,20 +163,25 @@ export function DashboardView() {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3 items-stretch">
-        <TelemetryMap
-          realtime={realtimeList}
-          selectedId={selectedId}
-          onSelect={handleSelect}
-          onMapReady={(m) => {
-            mapRef.current = m;
-          }}
-        />
-        <RealtimeList
-          realtime={realtimeList}
-          selectedId={selectedId}
-          onSelect={(id) => handleSelect(id)}
-        />
+      {/* aspect-[5/3] on the wrapper sets the row height from the map's anchor.
+          The inner grid fills it; the list is stretched to the same height and
+          scrolls internally with the fade + arrow indicator. */}
+      <div className="aspect-[5/3] w-full">
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3 h-full">
+          <TelemetryMap
+            realtime={realtimeList}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+            onMapReady={(m) => {
+              mapRef.current = m;
+            }}
+          />
+          <RealtimeList
+            realtime={realtimeList}
+            selectedId={selectedId}
+            onSelect={(id) => handleSelect(id)}
+          />
+        </div>
       </div>
     </div>
   );

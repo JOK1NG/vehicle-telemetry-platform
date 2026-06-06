@@ -38,7 +38,7 @@ export function RealtimeList({
   }, [sorted.length]);
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] flex flex-col">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] flex flex-col h-full min-h-0">
       <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
         <div>
           <div className="text-[13px] font-semibold">在线车辆</div>

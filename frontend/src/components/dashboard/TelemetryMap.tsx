@@ -166,7 +166,7 @@ export function TelemetryMap({
   }, [selectedId]);
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden flex flex-col">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden flex flex-col min-h-0">
       <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between gap-2 flex-wrap shrink-0">
         <div>
           <div className="text-[13px] font-semibold">实时车辆位置</div>
