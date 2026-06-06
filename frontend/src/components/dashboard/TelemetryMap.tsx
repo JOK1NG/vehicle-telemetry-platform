@@ -166,8 +166,8 @@ export function TelemetryMap({
   }, [selectedId]);
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
-      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between gap-2 flex-wrap">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden flex flex-col">
+      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between gap-2 flex-wrap shrink-0">
         <div>
           <div className="text-[13px] font-semibold">实时车辆位置</div>
           <div className="text-[11px] text-[var(--muted-foreground)]">
@@ -208,7 +208,7 @@ export function TelemetryMap({
         </div>
       </div>
 
-      <div className="relative aspect-[5/3]">
+      <div className="relative flex-1 min-h-0">
         <div
           ref={containerRef}
           className="w-full h-full"

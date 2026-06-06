@@ -163,7 +163,7 @@ export function DashboardView() {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3">
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3 items-stretch">
         <TelemetryMap
           realtime={realtimeList}
           selectedId={selectedId}
