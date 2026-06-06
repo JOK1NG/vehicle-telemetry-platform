@@ -3,11 +3,12 @@ package com.iov.platform.modules.ai.controller;
 import com.iov.platform.common.Result;
 import com.iov.platform.modules.ai.dto.PingRequest;
 import com.iov.platform.modules.ai.dto.PingResponse;
-import com.iov.platform.modules.ai.service.ChatOrchestratorService;
+import com.iov.platform.modules.ai.service.AiCallLogService;
+import com.iov.platform.modules.ai.service.AiChatGateway;
 import com.iov.platform.modules.ai.service.PromptTemplateService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
@@ -16,11 +17,9 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class AiPingController {
 
-    private final ChatOrchestratorService orchestrator;
+    private final AiChatGateway chatGateway;
     private final PromptTemplateService promptService;
-
-    @Value("${spring.ai.openai.chat.options.model:qwen3.7-plus}")
-    private String defaultModel;
+    private final AiCallLogService logService;
 
     @PostMapping("/ping")
     public Result<PingResponse> ping(@RequestBody(required = false) PingRequest request) {
@@ -28,28 +27,37 @@ public class AiPingController {
                 ? request.getMessage()
                 : "Hello, 请用中文回复'AI接入成功'并简单介绍你自己。";
 
-        String model = request != null && request.getModel() != null
+        String model = request != null && StringUtils.hasText(request.getModel())
                 ? request.getModel()
-                : defaultModel;
+                : chatGateway.getDefaultModel();
 
-        long start = System.currentTimeMillis();
+        String provider = chatGateway.getProvider();
+        String systemPrompt = promptService.getSystemPrompt("ping");
+
         try {
-            String reply = orchestrator.chat(
-                    "ping",
+            AiChatGateway.ChatResult result = chatGateway.chat(new AiChatGateway.ChatRequest(
                     model,
-                    "qwen",
-                    promptService.getSystemPrompt("ping"),
+                    systemPrompt,
                     userMessage,
-                    null
-            );
-            long latency = System.currentTimeMillis() - start;
+                    null,
+                    false
+            ));
+
+            logService.log("ping", model, provider,
+                    "system=" + systemPrompt + "; user=" + userMessage,
+                    result.content(), true, (int) result.latencyMs(), (int) result.totalTokens(), null);
+
             return Result.ok(PingResponse.builder()
-                    .reply(reply)
-                    .model(model)
-                    .provider("qwen")
-                    .latencyMs(latency)
+                    .reply(result.content())
+                    .model(result.model())
+                    .provider(result.provider())
+                    .latencyMs(result.latencyMs())
                     .build());
         } catch (Exception e) {
+            logService.log("ping", model, provider,
+                    "system=" + systemPrompt + "; user=" + userMessage,
+                    "ERROR: " + e.getMessage(),
+                    false, null, null, null);
             log.error("AI ping failed", e);
             return Result.fail(500, "AI 调用失败: " + e.getMessage());
         }

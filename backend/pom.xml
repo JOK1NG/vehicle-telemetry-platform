@@ -127,10 +127,10 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Spring AI - OpenAI SDK (compatible with Qwen / DashScope) -->
+        <!-- Spring AI - OpenAI SDK (compatible with OpenAI-compatible providers) -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
+            <artifactId>spring-ai-openai</artifactId>
         </dependency>
 
         <!-- Browser-native dashboard screenshots for AI vision analysis -->

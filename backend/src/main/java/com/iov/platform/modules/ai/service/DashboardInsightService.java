@@ -8,13 +8,8 @@ import com.iov.platform.modules.auth.service.AuthUserDetails;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.ParameterizedTypeReference;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientResponseException;
 
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -26,52 +21,13 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DashboardInsightService {
 
-    private static final ParameterizedTypeReference<Map<String, Object>> MAP_RESPONSE_TYPE =
-            new ParameterizedTypeReference<>() {};
-
     private final PromptTemplateService promptService;
     private final AiCallLogService logService;
     private final ObjectMapper objectMapper;
     private final DashboardScreenshotService screenshotService;
-    private final RestClient.Builder restClientBuilder;
+    private final AiChatGateway chatGateway;
 
-    @Value("${spring.ai.openai.chat.options.model:qwen3.7-plus}")
-    private String chatModel;
-
-    @Value("${spring.ai.openai.api-key:}")
-    private String apiKey;
-
-    @Value("${spring.ai.openai.base-url:}")
-    private String qwenBaseUrl;
-
-    @Value("${ai.vision.model:qwen3.7-plus}")
-    private String visionModel;
-
-    @Value("${ai.dashboard-insight.provider:qwen}")
-    private String dashboardProvider;
-
-    @Value("${ai.dashboard-insight.api-key:}")
-    private String dashboardApiKey;
-
-    @Value("${ai.dashboard-insight.base-url:}")
-    private String dashboardBaseUrl;
-
-    @Value("${ai.dashboard-insight.model:}")
-    private String dashboardInsightModel;
-
-    @Value("${ai.dashboard-insight.temperature:0.2}")
-    private Double dashboardTemperature;
-
-    @Value("${ai.dashboard-insight.max-tokens:1200}")
-    private Integer dashboardMaxTokens;
-
-    @Value("${ai.dashboard-insight.response-format:}")
-    private String dashboardResponseFormat;
-
-    @Value("${ai.dashboard-insight.reasoning-effort:}")
-    private String dashboardReasoningEffort;
-
-    @Value("${ai.dashboard-insight.image-mode:true}")
+    @Value("${ai.dashboard-insight.image-mode:auto}")
     private String imageMode;
 
     public DashboardInsightResponse analyze(
@@ -80,7 +36,7 @@ public class DashboardInsightService {
             String authorizationHeader,
             AuthUserDetails user) {
         String systemPrompt = promptService.getSystemPrompt("dashboard_insight");
-        String model = dashboardModel();
+        String model = chatGateway.getDefaultModel();
         boolean useImageInput = shouldUseImageInput(model);
         long start = System.currentTimeMillis();
         long screenshotMs = 0;
@@ -89,8 +45,7 @@ public class DashboardInsightService {
         long parseMs = 0;
 
         try {
-            assertDashboardProviderConfigured();
-            DashboardModelCallResult response;
+            AiChatGateway.ChatResult response;
             String textContext;
             if (useImageInput) {
                 long screenshotStart = System.currentTimeMillis();
@@ -102,7 +57,13 @@ public class DashboardInsightService {
                 contextMs = System.currentTimeMillis() - contextStart;
 
                 long modelStart = System.currentTimeMillis();
-                response = callDashboardModel(systemPrompt, textContext, imageBytes, model);
+                response = chatGateway.chat(new AiChatGateway.ChatRequest(
+                        model,
+                        systemPrompt,
+                        textContext,
+                        imageBytes,
+                        true
+                ));
                 modelMs = System.currentTimeMillis() - modelStart;
             } else {
                 long screenshotStart = System.currentTimeMillis();
@@ -114,14 +75,20 @@ public class DashboardInsightService {
                 contextMs = System.currentTimeMillis() - contextStart;
 
                 long modelStart = System.currentTimeMillis();
-                response = callDashboardModel(systemPrompt, textContext, null, model);
+                response = chatGateway.chat(new AiChatGateway.ChatRequest(
+                        model,
+                        systemPrompt,
+                        textContext,
+                        null,
+                        true
+                ));
                 modelMs = System.currentTimeMillis() - modelStart;
             }
 
             String result = response.content();
             long latency = System.currentTimeMillis() - start;
 
-            logService.log("dashboard_insight", model, dashboardProvider(),
+            logService.log("dashboard_insight", response.model(), response.provider(),
                     (useImageInput ? "image+" : "text+") + textContext.length() + "chars",
                     truncate(result, 500), true, (int) latency, (int) response.totalTokens(), userId);
 
@@ -204,176 +171,15 @@ public class DashboardInsightService {
         return sb.toString();
     }
 
-    private String dashboardModel() {
-        if (StringUtils.hasText(dashboardInsightModel)) {
-            return dashboardInsightModel;
-        }
-        return StringUtils.hasText(visionModel) ? visionModel : chatModel;
-    }
-
-    private String dashboardProvider() {
-        return StringUtils.hasText(dashboardProvider) ? dashboardProvider : "qwen";
-    }
-
-    private String dashboardApiKey() {
-        return StringUtils.hasText(dashboardApiKey) ? dashboardApiKey : apiKey;
-    }
-
-    private String dashboardBaseUrl() {
-        return StringUtils.hasText(dashboardBaseUrl) ? dashboardBaseUrl : qwenBaseUrl;
-    }
-
-    private void assertDashboardProviderConfigured() {
-        String provider = dashboardProvider();
-        if (!StringUtils.hasText(dashboardApiKey()) || "dummy_key_for_local_dev".equals(dashboardApiKey().trim())) {
-            throw new IllegalStateException("AI_DASHBOARD_API_KEY 未配置或仍是本地占位值，请在 .env 中填入 "
-                    + provider + " 的有效 API Key 后重启后端");
-        }
-        if (!StringUtils.hasText(dashboardBaseUrl())) {
-            throw new IllegalStateException("AI_DASHBOARD_BASE_URL 未配置，请在 .env 中填入 "
-                    + provider + " 的 OpenAI-compatible Base URL 后重启后端");
-        }
-    }
-
     private boolean shouldUseImageInput(String model) {
-        if ("true".equalsIgnoreCase(imageMode)) return true;
         if ("false".equalsIgnoreCase(imageMode)) return false;
+        if ("text".equalsIgnoreCase(imageMode)) return false;
         String normalized = model != null ? model.toLowerCase() : "";
-        return normalized.contains("vl")
+        boolean imageCapable = normalized.contains("vl")
                 || normalized.contains("vision")
                 || normalized.contains("omni");
-    }
-
-    private DashboardModelCallResult callDashboardModel(
-            String systemPrompt,
-            String textContext,
-            byte[] imageBytes,
-            String model) {
-        String endpoint = chatCompletionsEndpoint(dashboardBaseUrl());
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", model);
-        body.put("messages", messages(systemPrompt, textContext, imageBytes));
-        body.put("temperature", dashboardTemperature != null ? dashboardTemperature : 0.2);
-        body.put("max_tokens", dashboardMaxTokens != null ? dashboardMaxTokens : 1200);
-        if (StringUtils.hasText(dashboardResponseFormat)) {
-            body.put("response_format", Map.of("type", dashboardResponseFormat));
-        }
-        if (StringUtils.hasText(dashboardReasoningEffort)) {
-            body.put("reasoning_effort", dashboardReasoningEffort);
-        }
-
-        try {
-            Map<String, Object> response = restClientBuilder.build()
-                    .post()
-                    .uri(endpoint)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + dashboardApiKey())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .accept(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(MAP_RESPONSE_TYPE);
-            return parseModelResponse(response);
-        } catch (RestClientResponseException e) {
-            throw new IllegalStateException("AI_DASHBOARD 调用失败: HTTP " + e.getStatusCode().value()
-                    + " " + truncate(e.getResponseBodyAsString(), 500), e);
-        }
-    }
-
-    private List<Map<String, Object>> messages(String systemPrompt, String textContext, byte[] imageBytes) {
-        Map<String, Object> system = new LinkedHashMap<>();
-        system.put("role", "system");
-        system.put("content", systemPrompt);
-
-        Map<String, Object> user = new LinkedHashMap<>();
-        user.put("role", "user");
-        if (imageBytes == null) {
-            user.put("content", textContext);
-        } else {
-            Map<String, Object> textPart = new LinkedHashMap<>();
-            textPart.put("type", "text");
-            textPart.put("text", textContext);
-
-            Map<String, Object> imageUrl = new LinkedHashMap<>();
-            imageUrl.put("url", "data:image/png;base64," + Base64.getEncoder().encodeToString(imageBytes));
-
-            Map<String, Object> imagePart = new LinkedHashMap<>();
-            imagePart.put("type", "image_url");
-            imagePart.put("image_url", imageUrl);
-
-            user.put("content", List.of(textPart, imagePart));
-        }
-        return List.of(system, user);
-    }
-
-    private String chatCompletionsEndpoint(String baseUrl) {
-        String normalized = baseUrl.trim();
-        while (normalized.endsWith("/")) {
-            normalized = normalized.substring(0, normalized.length() - 1);
-        }
-        if (normalized.endsWith("/chat/completions")) {
-            return normalized;
-        }
-        if (normalized.endsWith("/v1")) {
-            return normalized + "/chat/completions";
-        }
-        return normalized + "/v1/chat/completions";
-    }
-
-    private DashboardModelCallResult parseModelResponse(Map<String, Object> response) {
-        if (response == null) {
-            throw new IllegalStateException("AI_DASHBOARD 返回为空");
-        }
-        Object choicesValue = response.get("choices");
-        if (!(choicesValue instanceof List<?> choices) || choices.isEmpty()) {
-            throw new IllegalStateException("AI_DASHBOARD 返回缺少 choices: " + truncate(response.toString(), 500));
-        }
-        Object firstChoice = choices.get(0);
-        if (!(firstChoice instanceof Map<?, ?> choice)) {
-            throw new IllegalStateException("AI_DASHBOARD choices 格式异常: " + truncate(response.toString(), 500));
-        }
-        Object messageValue = choice.get("message");
-        if (!(messageValue instanceof Map<?, ?> message)) {
-            throw new IllegalStateException("AI_DASHBOARD 返回缺少 message: " + truncate(response.toString(), 500));
-        }
-
-        String content = extractContent(message.get("content"));
-        long totalTokens = totalTokens(response.get("usage"));
-        return new DashboardModelCallResult(content, totalTokens);
-    }
-
-    private String extractContent(Object content) {
-        if (content == null) {
-            return "";
-        }
-        if (content instanceof String text) {
-            return text;
-        }
-        if (content instanceof List<?> parts) {
-            StringBuilder sb = new StringBuilder();
-            for (Object part : parts) {
-                if (part instanceof Map<?, ?> partMap) {
-                    Object text = partMap.get("text");
-                    if (text != null) {
-                        sb.append(text);
-                    }
-                } else if (part != null) {
-                    sb.append(part);
-                }
-            }
-            return sb.toString();
-        }
-        return content.toString();
-    }
-
-    private long totalTokens(Object usage) {
-        if (!(usage instanceof Map<?, ?> usageMap)) {
-            return 0;
-        }
-        Object totalTokens = usageMap.get("total_tokens");
-        if (totalTokens instanceof Number number) {
-            return number.longValue();
-        }
-        return 0;
+        if ("force".equalsIgnoreCase(imageMode)) return true;
+        return imageCapable;
     }
 
     @SuppressWarnings("unchecked")
@@ -387,12 +193,15 @@ public class DashboardInsightService {
 
             Map<String, Object> parsed = objectMapper.readValue(json,
                     new TypeReference<Map<String, Object>>() {});
+            List<DashboardInsightResponse.DashboardFinding> findings = findingListField(parsed, "findings");
+            List<String> recommendations = stringListField(parsed, "recommendations");
+            String summary = stringField(parsed, "summary");
 
             return DashboardInsightResponse.builder()
-                    .summary(stringField(parsed, "summary"))
+                    .summary(summaryOrFallback(summary, findings))
                     .severity(stringField(parsed, "severity"))
-                    .findings(findingListField(parsed, "findings"))
-                    .recommendations(stringListField(parsed, "recommendations"))
+                    .findings(findings)
+                    .recommendations(recommendations)
                     .latencyMs(latencyMs)
                     .build();
         } catch (Exception e) {
@@ -448,6 +257,18 @@ public class DashboardInsightService {
                 .build();
     }
 
+    private String summaryOrFallback(
+            String summary,
+            List<DashboardInsightResponse.DashboardFinding> findings) {
+        if (StringUtils.hasText(summary)) {
+            return summary;
+        }
+        if (findings != null && !findings.isEmpty()) {
+            return "发现 " + findings.size() + " 项大屏现象：" + findings.get(0).getDescription();
+        }
+        return "AI 返回了结构化诊断，但未提供摘要。";
+    }
+
     private static DashboardInsightResponse.Timing timing(
             long screenshotMs,
             long contextMs,
@@ -470,6 +291,4 @@ public class DashboardInsightService {
         return s.length() <= maxLen ? s : s.substring(0, maxLen);
     }
 
-    private record DashboardModelCallResult(String content, long totalTokens) {
-    }
 }

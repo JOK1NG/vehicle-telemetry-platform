@@ -6,9 +6,9 @@ import com.iov.platform.modules.ai.dto.TelemetryInsightRequest;
 import com.iov.platform.modules.ai.dto.TelemetryInsightResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,30 +19,63 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TelemetryInsightService {
 
+    private static final List<String> VALID_SEVERITIES = List.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
+
     private final JdbcTemplate jdbcTemplate;
-    private final ChatOrchestratorService orchestrator;
+    private final AiChatGateway chatGateway;
     private final PromptTemplateService promptService;
     private final ObjectMapper objectMapper;
-
-    @Value("${spring.ai.openai.chat.options.model:qwen3.7-plus}")
-    private String model;
+    private final AiCallLogService logService;
 
     public TelemetryInsightResponse analyze(TelemetryInsightRequest request, Long userId) {
         String contextJson = buildContext(request);
         String systemPrompt = promptService.getSystemPrompt("telemetry_insight");
+        String model = chatGateway.getDefaultModel();
+        String provider = chatGateway.getProvider();
 
-        long start = System.currentTimeMillis();
-        String result = orchestrator.chat(
-                "telemetry_insight",
-                model,
-                "qwen",
-                systemPrompt,
-                contextJson,
-                userId
-        );
-        long latency = System.currentTimeMillis() - start;
+        TelemetryInsightResponse lastParsed = null;
+        Exception lastException = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            String userPayload = attempt == 1 ? contextJson : retryPrompt(contextJson);
+            try {
+                AiChatGateway.ChatResult callResult = chatGateway.chat(new AiChatGateway.ChatRequest(
+                        model,
+                        systemPrompt,
+                        userPayload,
+                        null,
+                        true
+                ));
+                TelemetryInsightResponse parsed = parseResponse(callResult.content(), callResult.latencyMs());
+                boolean valid = isValid(parsed);
+                logService.log("telemetry_insight", model, provider,
+                        "attempt=" + attempt + "; " + reqSummary(systemPrompt, userPayload),
+                        truncate(callResult.content(), 500),
+                        valid, (int) callResult.latencyMs(), (int) callResult.totalTokens(), userId);
+                if (valid) {
+                    return parsed;
+                }
+                lastParsed = parsed;
+            } catch (Exception e) {
+                lastException = e;
+                logService.log("telemetry_insight", model, provider,
+                        "attempt=" + attempt + "; " + reqSummary(systemPrompt, userPayload),
+                        "ERROR: " + e.getMessage(),
+                        false, null, null, userId);
+            }
+        }
+        if (lastParsed != null) {
+            return lastParsed;
+        }
+        throw new IllegalStateException("AI telemetry insight failed after retry", lastException);
+    }
 
-        return parseResponse(result, latency);
+    private static String reqSummary(String system, String user) {
+        return "system=" + truncate(system, 500) + "; user=" + truncate(user, 500);
+    }
+
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return null;
+        return s.length() <= maxLen ? s : s.substring(0, maxLen);
     }
 
     private String buildContext(TelemetryInsightRequest request) {
@@ -114,12 +147,16 @@ public class TelemetryInsightService {
 
             Map<String, Object> parsed = objectMapper.readValue(json,
                     new TypeReference<Map<String, Object>>() {});
+            List<String> findings = stringListField(parsed, "findings");
+            List<String> recommendations = stringListField(parsed, "recommendations");
+            String summary = stringField(parsed, "summary");
+            String severity = normalizeSeverity(stringField(parsed, "severity"));
 
             return TelemetryInsightResponse.builder()
-                    .summary(stringField(parsed, "summary"))
-                    .severity(stringField(parsed, "severity"))
-                    .findings(stringListField(parsed, "findings"))
-                    .recommendations(stringListField(parsed, "recommendations"))
+                    .summary(summaryOrFallback(summary, findings))
+                    .severity(severity)
+                    .findings(findings)
+                    .recommendations(recommendations)
                     .latencyMs(latencyMs)
                     .build();
         } catch (Exception e) {
@@ -144,8 +181,63 @@ public class TelemetryInsightService {
     private List<String> stringListField(Map<String, Object> map, String key) {
         Object v = map.get(key);
         if (v instanceof List<?> list) {
-            return list.stream().map(Object::toString).toList();
+            return list.stream()
+                    .map(this::findingToString)
+                    .filter(s -> s != null && !s.isBlank())
+                    .toList();
         }
         return List.of();
+    }
+
+    private String findingToString(Object item) {
+        if (item == null) return null;
+        if (item instanceof String s) return s;
+        if (item instanceof Map<?, ?> m) {
+            Object desc = m.get("description");
+            if (desc != null) {
+                Object comp = m.get("component");
+                if (comp != null && !comp.toString().isBlank()) {
+                    return "[" + comp + "] " + desc;
+                }
+                return desc.toString();
+            }
+            return m.toString();
+        }
+        return item.toString();
+    }
+
+    private String retryPrompt(String contextJson) {
+        return """
+                上一次输出未满足接口 JSON schema。请重新分析下面的车辆遥测上下文。
+                禁止复述输入，禁止输出 markdown，禁止省略 summary。
+                只能输出一个 JSON 对象：
+                {"summary":"...","severity":"LOW|MEDIUM|HIGH|CRITICAL","findings":["..."],"recommendations":["..."]}
+
+                车辆遥测上下文：
+                """ + contextJson;
+    }
+
+    private boolean isValid(TelemetryInsightResponse response) {
+        return response != null
+                && StringUtils.hasText(response.getSummary())
+                && VALID_SEVERITIES.contains(response.getSeverity());
+    }
+
+    private String normalizeSeverity(String severity) {
+        if (!StringUtils.hasText(severity)) {
+            return "UNKNOWN";
+        }
+        String normalized = severity.trim().toUpperCase();
+        return VALID_SEVERITIES.contains(normalized) ? normalized : "UNKNOWN";
+    }
+
+    private String summaryOrFallback(String summary, List<String> findings) {
+        if (StringUtils.hasText(summary)) {
+            return summary;
+        }
+        if (findings != null && !findings.isEmpty()) {
+            return "发现 " + findings.size() + " 项遥测现象：" + findings.get(0);
+        }
+        return "AI 返回了结构化诊断，但未提供摘要。";
     }
 }

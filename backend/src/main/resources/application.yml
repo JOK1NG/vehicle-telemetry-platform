@@ -5,15 +5,6 @@ spring:
   application:
     name: vehicle-telemetry-backend
 
-  # Spring AI - Qwen DashScope (OpenAI compatible)
-  ai:
-    openai:
-      api-key: ${AI_QWEN_API_KEY:}
-      base-url: ${AI_QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
-      chat:
-        options:
-          model: ${AI_CHAT_MODEL:qwen3.7-plus}
-
   # MyBatis-Plus
   mybatis-plus:
     configuration:
@@ -26,18 +17,21 @@ spring:
         logic-not-delete-value: 0
 
 ai:
-  vision:
-    model: ${AI_VISION_MODEL:qwen3.7-plus}
+  # Spring AI OpenAI-compatible chat gateway.
+  # AI_DASHBOARD_* / AI_QWEN_* are kept as fallback env names for existing local files.
+  chat:
+    provider: ${AI_CHAT_PROVIDER:${AI_DASHBOARD_PROVIDER:stepfun}}
+    api-key: ${AI_CHAT_API_KEY:${AI_DASHBOARD_API_KEY:${AI_QWEN_API_KEY:dummy_key_for_local_dev}}}
+    base-url: ${AI_CHAT_BASE_URL:${AI_DASHBOARD_BASE_URL:${AI_QWEN_BASE_URL:https://api.stepfun.com/step_plan}}}
+    completions-path: ${AI_CHAT_COMPLETIONS_PATH:${AI_DASHBOARD_COMPLETIONS_PATH:/v1/chat/completions}}
+    model: ${AI_CHAT_MODEL:${AI_DASHBOARD_MODEL:step-3.7-flash}}
+    temperature: ${AI_CHAT_TEMPERATURE:${AI_DASHBOARD_TEMPERATURE:0.2}}
+    max-tokens: ${AI_CHAT_MAX_TOKENS:${AI_DASHBOARD_MAX_TOKENS:2400}}
+    response-format: ${AI_CHAT_RESPONSE_FORMAT:${AI_DASHBOARD_RESPONSE_FORMAT:json_object}}
+    reasoning-effort: ${AI_CHAT_REASONING_EFFORT:${AI_DASHBOARD_REASONING_EFFORT:}}
+    stream-usage: ${AI_CHAT_STREAM_USAGE:false}
   dashboard-insight:
-    provider: ${AI_DASHBOARD_PROVIDER:qwen}
-    api-key: ${AI_DASHBOARD_API_KEY:${AI_QWEN_API_KEY:}}
-    base-url: ${AI_DASHBOARD_BASE_URL:${AI_QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}}
-    model: ${AI_DASHBOARD_MODEL:${AI_VISION_MODEL:qwen3.7-plus}}
-    temperature: ${AI_DASHBOARD_TEMPERATURE:0.2}
-    max-tokens: ${AI_DASHBOARD_MAX_TOKENS:1200}
-    response-format: ${AI_DASHBOARD_RESPONSE_FORMAT:}
-    reasoning-effort: ${AI_DASHBOARD_REASONING_EFFORT:}
-    image-mode: ${AI_DASHBOARD_IMAGE_MODE:true}
+    image-mode: ${AI_DASHBOARD_IMAGE_MODE:auto}
   dashboard-screenshot:
     frontend-base-url: ${AI_DASHBOARD_FRONTEND_BASE_URL:http://localhost:5173}
     chrome-executable-path: ${AI_DASHBOARD_CHROME_PATH:/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}

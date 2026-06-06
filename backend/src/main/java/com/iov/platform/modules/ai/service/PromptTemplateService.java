@@ -18,8 +18,16 @@ public class PromptTemplateService {
             要求：
             - 仅基于给出的数据进行分析，不得臆测不存在的数据。
             - 对高风险情况保持保守判断。
-            - 使用 JSON 输出，包含 summary（摘要）、severity（严重级别：LOW/MEDIUM/HIGH/CRITICAL）、
-              findings（发现列表）、recommendations（建议列表）。
+            - 严格使用以下 JSON 结构输出，不要任何额外字段或注释：
+              {
+                "summary": "一两句话的整体结论，纯文本字符串",
+                "severity": "LOW | MEDIUM | HIGH | CRITICAL 之一",
+                "findings": ["短句1", "短句2", ...],
+                "recommendations": ["建议1", "建议2", ...]
+              }
+            - summary 字段必填，不得省略；如果无异常，也要返回“未发现明显异常”等明确摘要。
+            - findings 与 recommendations 必须是**纯字符串数组**，每个元素是一句简短的中文结论
+              （不超过 80 字）。禁止输出对象、禁止输出 markdown 代码块标签外的内容。
             - 所有结论仅供辅助参考，关键故障以人工检修为准。""",
 
             "dashboard_insight",
