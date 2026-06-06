@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { aiApi } from '../../api/ai';
 import type { DashboardInsightResponse } from '../../types';
 import { cx } from '../common/utils';
+import { ChevronDownIcon } from '../common/Icons';
 import { toast } from '../common/Toast';
 
 const severityColor: Record<string, string> = {
@@ -32,6 +33,26 @@ export function AiInsightPanel({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DashboardInsightResponse | null>(null);
   const [collapsed, setCollapsed] = useState(true);
+  const [showScrollHint, setShowScrollHint] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const check = () => {
+      const hasOverflow = el.scrollHeight - el.clientHeight > 1;
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 1;
+      setShowScrollHint(hasOverflow && !atBottom);
+    };
+    check();
+    el.addEventListener('scroll', check);
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', check);
+      ro.disconnect();
+    };
+  }, [result, collapsed]);
 
   const handleAnalyze = async () => {
     setLoading(true);
@@ -53,7 +74,7 @@ export function AiInsightPanel({
   };
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden">
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden shrink-0">
       <div
         className="px-4 py-3 flex items-center justify-between cursor-pointer select-none"
         onClick={() => result && setCollapsed(!collapsed)}
@@ -91,7 +112,11 @@ export function AiInsightPanel({
       </div>
 
       {result && !collapsed && (
-        <div className="px-4 pb-4 space-y-4 border-t border-[var(--border)] pt-3">
+        <div className="relative border-t border-[var(--border)]">
+          <div
+            ref={contentRef}
+            className="px-4 pb-4 pt-3 space-y-4 max-h-[min(260px,38vh)] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
           <p className="text-[16px] leading-relaxed">{result.summary}</p>
 
           {result.findings.length > 0 && (
@@ -149,6 +174,12 @@ export function AiInsightPanel({
             )}
             {' '}· AI 结论仅供辅助参考
           </div>
+          </div>
+          {showScrollHint && (
+            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-[var(--card)] via-[var(--card)]/70 to-transparent flex items-end justify-center pb-1.5">
+              <ChevronDownIcon className="w-3.5 h-3.5 text-[var(--muted-foreground)] scroll-hint" />
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
 package com.iov.platform.config;
 
+import jakarta.servlet.DispatcherType;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -84,6 +85,8 @@ public class SecurityConfig {
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
 
             .authorizeHttpRequests(auth -> auth
+                // MVC async/SSE completion dispatches should not be re-authorized after response commit.
+                .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                 // 认证接口无需认证
                 .requestMatchers("/api/auth/login").permitAll()
                 // AI ping 测试接口无需认证（Phase 0）

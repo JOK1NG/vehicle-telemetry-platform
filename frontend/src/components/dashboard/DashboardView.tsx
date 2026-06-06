@@ -94,7 +94,7 @@ export function DashboardView() {
   };
 
   return (
-    <div className="view-in space-y-4">
+    <div className="view-in space-y-4 h-full xl:flex xl:flex-col">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight">监控大屏</h1>
@@ -164,11 +164,15 @@ export function DashboardView() {
         />
       </div>
 
-      {/* aspect-[5/3] on the wrapper sets the row height from the map's anchor.
-          The inner grid fills it; the list is stretched to the same height and
-          scrolls internally with the fade + arrow indicator. */}
-      <div className="aspect-[5/3] w-full">
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3 h-full">
+      {/* Single-column mode (below xl): aspect-[5/3] on the wrapper sets the
+          row height. grid-rows-[1fr_1fr] splits it 50/50 so neither card
+          collapses. Two-column mode (xl+): the page is a flex column, so
+          xl:flex-1 on the wrapper makes the map+list row eat the remaining
+          viewport space and adapt to any screen height. The grid's
+          xl:grid-rows-[1fr] keeps both cards the same height filling the
+          wrapper (the list scrolls internally when its content overflows). */}
+      <div className="aspect-[5/3] w-full xl:aspect-auto xl:flex-1 xl:min-h-[300px]">
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] grid-rows-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)] gap-3 h-full">
           <TelemetryMap
             realtime={realtimeList}
             selectedId={selectedId}

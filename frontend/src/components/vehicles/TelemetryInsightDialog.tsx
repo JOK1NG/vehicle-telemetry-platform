@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { aiApi } from '../../api/ai';
 import type { TelemetryInsightResponse, Vehicle } from '../../types';
@@ -49,10 +49,13 @@ export function TelemetryInsightDialog({
   const [windowKey, setWindowKey] = useState<WindowKey>('15m');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TelemetryInsightResponse | null>(null);
+  const [streamText, setStreamText] = useState('');
   const [closing, setClosing] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   const handleClose = () => {
     if (closing) return;
+    abortRef.current?.abort();
     setClosing(true);
     window.setTimeout(() => onClose(), 180);
   };
@@ -66,20 +69,40 @@ export function TelemetryInsightDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onClose, closing]);
 
+  useEffect(() => {
+    return () => abortRef.current?.abort();
+  }, []);
+
   const range = useMemo(() => computeRange(windowKey), [windowKey]);
 
   const handleAnalyze = async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
+    setResult(null);
+    setStreamText('');
     try {
-      const res = await aiApi.telemetryInsight({
-        vehicleId: vehicle.id,
-        timeRange: { start: range.start, end: range.end },
-      });
+      const res = await aiApi.telemetryInsightStream(
+        {
+          vehicleId: vehicle.id,
+          timeRange: { start: range.start, end: range.end },
+        },
+        {
+          signal: controller.signal,
+          onDelta: (delta) => setStreamText((prev) => prev + delta),
+          onFinal: (finalResult) => setResult(finalResult),
+        }
+      );
       setResult(res);
     } catch (e) {
+      if (controller.signal.aborted) return;
       toast.error(e instanceof Error ? e.message : 'AI 诊断失败');
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
@@ -167,9 +190,22 @@ export function TelemetryInsightDialog({
           )}
 
           {loading && (
-            <div className="text-center py-10 text-[var(--muted-foreground)] text-[12.5px]">
-              <div className="w-5 h-5 mx-auto mb-2 border-2 border-[var(--muted-foreground)]/30 border-t-[var(--foreground)] rounded-full animate-spin" />
-              Qwen 文本生成一般 3~10 秒，请稍候...
+            <div className="py-8 text-[var(--muted-foreground)] text-[12.5px]">
+              <div className="text-center">
+                <div className="w-5 h-5 mx-auto mb-2 border-2 border-[var(--muted-foreground)]/30 border-t-[var(--foreground)] rounded-full animate-spin" />
+                模型正在流式生成结构化诊断...
+              </div>
+              <div className="mt-4 rounded-md border border-[var(--border)] bg-[var(--background)] p-3 min-h-[96px] max-h-[220px] overflow-y-auto">
+                {streamText ? (
+                  <pre className="whitespace-pre-wrap break-words text-left text-[11.5px] leading-relaxed font-mono text-[var(--foreground)]">
+                    {streamText}
+                  </pre>
+                ) : (
+                  <div className="h-full min-h-[70px] grid place-items-center text-[11.5px]">
+                    等待首个输出片段...
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -236,6 +272,17 @@ export function TelemetryInsightDialog({
                     ))}
                   </ul>
                 </div>
+              )}
+
+              {streamText && (
+                <details className="rounded-md border border-[var(--border)] bg-[var(--background)]">
+                  <summary className="cursor-pointer px-3 py-2 text-[11.5px] text-[var(--muted-foreground)]">
+                    流式生成原文
+                  </summary>
+                  <pre className="max-h-[180px] overflow-y-auto px-3 pb-3 whitespace-pre-wrap break-words text-[11.5px] leading-relaxed font-mono">
+                    {streamText}
+                  </pre>
+                </details>
               )}
 
               <div className="text-[11.5px] text-[var(--muted-foreground)] pt-2 border-t border-[var(--border)]">

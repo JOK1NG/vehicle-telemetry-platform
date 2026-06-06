@@ -4,11 +4,14 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iov.platform.modules.ai.dto.TelemetryInsightRequest;
 import com.iov.platform.modules.ai.dto.TelemetryInsightResponse;
+import com.iov.platform.modules.ai.dto.TelemetryInsightStreamEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -67,6 +70,53 @@ public class TelemetryInsightService {
             return lastParsed;
         }
         throw new IllegalStateException("AI telemetry insight failed after retry", lastException);
+    }
+
+    public Flux<TelemetryInsightStreamEvent> streamAnalyze(TelemetryInsightRequest request, Long userId) {
+        String contextJson = buildContext(request);
+        String systemPrompt = promptService.getSystemPrompt("telemetry_insight");
+        String model = chatGateway.getDefaultModel();
+        String provider = chatGateway.getProvider();
+        StringBuilder raw = new StringBuilder();
+        long startedAt = System.currentTimeMillis();
+        String requestSummary = reqSummary(systemPrompt, contextJson);
+
+        return Flux.defer(() -> chatGateway.stream(new AiChatGateway.ChatRequest(
+                        model,
+                        systemPrompt,
+                        contextJson,
+                        null,
+                        true
+                )))
+                .doOnNext(raw::append)
+                .map(TelemetryInsightStreamEvent::delta)
+                .concatWith(Mono.fromSupplier(() -> {
+                    long latencyMs = System.currentTimeMillis() - startedAt;
+                    TelemetryInsightResponse parsed = parseResponse(raw.toString(), latencyMs);
+                    boolean valid = isValid(parsed);
+                    logService.log("telemetry_insight_stream", model, provider,
+                            requestSummary,
+                            truncate(raw.toString(), 500),
+                            valid, (int) latencyMs, null, userId);
+                    if (!valid) {
+                        return TelemetryInsightStreamEvent.error(
+                                "AI 流式输出未满足接口 JSON schema，请重试。",
+                                latencyMs
+                        );
+                    }
+                    return TelemetryInsightStreamEvent.finalResult(parsed, latencyMs);
+                }))
+                .onErrorResume(e -> {
+                    long latencyMs = System.currentTimeMillis() - startedAt;
+                    logService.log("telemetry_insight_stream", model, provider,
+                            requestSummary,
+                            "ERROR: " + e.getMessage(),
+                            false, (int) latencyMs, null, userId);
+                    return Flux.just(TelemetryInsightStreamEvent.error(
+                            "AI 流式诊断失败：" + e.getMessage(),
+                            latencyMs
+                    ));
+                });
     }
 
     private static String reqSummary(String system, String user) {

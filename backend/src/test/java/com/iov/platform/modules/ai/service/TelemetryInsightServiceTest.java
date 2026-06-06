@@ -7,11 +7,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -223,6 +225,64 @@ class TelemetryInsightServiceTest {
                 eq(720),
                 eq(16),
                 eq(105L)
+        );
+    }
+
+    @Test
+    void streamAnalyze_emitsDeltasThenFinalResult() {
+        when(chatGateway.stream(any())).thenReturn(Flux.just(
+                "{\"summary\":\"流式诊断完成。\",",
+                "\"severity\":\"HIGH\",",
+                "\"findings\":[\"速度异常\"],",
+                "\"recommendations\":[\"立即复核轨迹\"]}"
+        ));
+
+        List<com.iov.platform.modules.ai.dto.TelemetryInsightStreamEvent> events =
+                service.streamAnalyze(requestWithMetrics(), 106L).collectList().block();
+
+        assertNotNull(events);
+        assertEquals(5, events.size());
+        assertEquals("delta", events.get(0).getType());
+        assertEquals("final", events.get(4).getType());
+        assertNotNull(events.get(4).getResult());
+        assertEquals("HIGH", events.get(4).getResult().getSeverity());
+        assertEquals("流式诊断完成。", events.get(4).getResult().getSummary());
+
+        verify(logService).log(
+                eq("telemetry_insight_stream"),
+                eq("step-3.7-flash"),
+                eq("stepfun"),
+                anyString(),
+                anyString(),
+                eq(true),
+                any(),
+                isNull(),
+                eq(106L)
+        );
+    }
+
+    @Test
+    void streamAnalyze_invalidJsonEmitsErrorEvent() {
+        when(chatGateway.stream(any())).thenReturn(Flux.just("{\"vehicleId\":1}"));
+
+        List<com.iov.platform.modules.ai.dto.TelemetryInsightStreamEvent> events =
+                service.streamAnalyze(requestWithMetrics(), 107L).collectList().block();
+
+        assertNotNull(events);
+        assertEquals(2, events.size());
+        assertEquals("error", events.get(1).getType());
+        assertTrue(events.get(1).getError().contains("JSON schema"));
+
+        verify(logService).log(
+                eq("telemetry_insight_stream"),
+                eq("step-3.7-flash"),
+                eq("stepfun"),
+                anyString(),
+                eq("{\"vehicleId\":1}"),
+                eq(false),
+                any(),
+                isNull(),
+                eq(107L)
         );
     }
 

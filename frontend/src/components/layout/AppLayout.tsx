@@ -6,7 +6,7 @@ export function AppLayout() {
     <div className="flex h-screen w-full bg-[var(--background)] text-[var(--foreground)]">
       <Sidebar vehicleCount={0} />
       <main className="flex-1 min-w-0 overflow-auto">
-        <div className="max-w-[1400px] mx-auto p-5 md:p-6 lg:p-7">
+        <div className="max-w-[1400px] mx-auto p-5 md:p-6 lg:p-7 h-full">
           <Outlet />
         </div>
       </main>

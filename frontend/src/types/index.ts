@@ -85,3 +85,11 @@ export interface TelemetryInsightResponse {
   recommendations: string[];
   latencyMs: number;
 }
+
+export interface TelemetryInsightStreamEvent {
+  type: 'delta' | 'final' | 'error';
+  delta?: string;
+  result?: TelemetryInsightResponse;
+  error?: string;
+  elapsedMs?: number;
+}
