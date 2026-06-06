@@ -13,10 +13,12 @@ import {
   TrashIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  BrainIcon,
 } from '../common/Icons';
 import { cx, fmtDate } from '../common/utils';
 import { VehicleDialog } from './VehicleDialog';
 import { ConfirmDialog } from './ConfirmDialog';
+import { TelemetryInsightDialog } from './TelemetryInsightDialog';
 
 type StatusFilter = 'all' | 'online' | 'offline';
 type DialogMode = 'create' | 'edit' | 'view';
@@ -33,6 +35,7 @@ export function VehicleListView() {
   const [dialog, setDialog] = useState<DialogMode | null>(null);
   const [editing, setEditing] = useState<Vehicle | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Vehicle | null>(null);
+  const [insightVehicle, setInsightVehicle] = useState<Vehicle | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -227,6 +230,13 @@ export function VehicleListView() {
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-1">
                         <button
+                          onClick={() => setInsightVehicle(v)}
+                          className="w-7 h-7 grid place-items-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--primary)]/10 hover:text-[var(--primary)] transition-colors"
+                          title="AI 遥测诊断"
+                        >
+                          <BrainIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => {
                             setEditing(v);
                             setDialog('view');
@@ -339,6 +349,13 @@ export function VehicleListView() {
           confirmText="删除"
           onCancel={() => setConfirmDelete(null)}
           onConfirm={() => handleDelete(confirmDelete.id)}
+        />
+      )}
+
+      {insightVehicle && (
+        <TelemetryInsightDialog
+          vehicle={insightVehicle}
+          onClose={() => setInsightVehicle(null)}
         />
       )}
     </div>

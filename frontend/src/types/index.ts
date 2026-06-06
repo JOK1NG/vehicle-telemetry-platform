@@ -77,3 +77,11 @@ export interface DashboardInsightTiming {
   totalMs: number;
   imageInput: boolean;
 }
+
+export interface TelemetryInsightResponse {
+  summary: string;
+  severity: string;
+  findings: string[];
+  recommendations: string[];
+  latencyMs: number;
+}

@@ -1,6 +1,6 @@
 import request from './client';
 import type { ApiResult } from '../types';
-import type { DashboardInsightResponse } from '../types';
+import type { DashboardInsightResponse, TelemetryInsightResponse } from '../types';
 
 export const aiApi = {
   async dashboardInsight(params: {
@@ -13,5 +13,16 @@ export const aiApi = {
       timeout: 120000,
     });
     return (res as unknown as ApiResult<DashboardInsightResponse>).data!;
+  },
+
+  async telemetryInsight(params: {
+    vehicleId: number;
+    timeRange: { start: string; end: string };
+    alerts?: string[];
+  }): Promise<TelemetryInsightResponse> {
+    const res = await request.post('/api/ai/insights/telemetry', params, {
+      timeout: 120000,
+    });
+    return (res as unknown as ApiResult<TelemetryInsightResponse>).data!;
   },
 };
