@@ -32,7 +32,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
     private final VehicleService vehicleService;
 
     /** 规则缓存：code -> rule（启动时 + 修改时刷新） */
-    private final Map<String, AlertRule> ruleCache = new ConcurrentHashMap<>();
+    private volatile Map<String, AlertRule> ruleCache = new ConcurrentHashMap<>();
 
     /**
      * 启动时初始化规则缓存
@@ -42,8 +42,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         for (AlertRule r : alertRuleMapper.findAllEnabled()) {
             next.put(r.getCode(), r);
         }
-        ruleCache.clear();
-        ruleCache.putAll(next);
+        this.ruleCache = new ConcurrentHashMap<>(next);
         log.info("告警规则缓存已刷新，共 {} 条", next.size());
     }
 
@@ -65,11 +64,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         if (patch.getDescription() != null) r.setDescription(patch.getDescription());
         r.setUpdatedAt(OffsetDateTime.now());
         alertRuleMapper.updateById(r);
-        if (Boolean.FALSE.equals(r.getEnabled())) {
-            ruleCache.remove(r.getCode());
-        } else {
-            ruleCache.put(r.getCode(), r);
-        }
+        reloadRuleCache(); // 全量刷新避免单条更新与并发全量刷新的竞态
         return r;
     }
 
@@ -110,7 +105,7 @@ public class AlertService extends ServiceImpl<AlertMapper, Alert> {
         try {
             String meta = vehicleService.getVehicleMetaCache(vehicleId);
             if (meta != null) {
-                String[] parts = meta.split(",", 2);
+                String[] parts = meta.split(",", 2); // 格式: plateNo,status — limit=2 保证只分两段
                 if (parts.length >= 1) plateNo = parts[0];
             }
         } catch (Exception ignore) {}

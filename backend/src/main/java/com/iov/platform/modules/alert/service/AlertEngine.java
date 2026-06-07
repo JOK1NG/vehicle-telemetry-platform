@@ -48,7 +48,11 @@ public class AlertEngine {
 
     @PostConstruct
     public void init() {
-        alertService.reloadRuleCache();
+        try {
+            alertService.reloadRuleCache();
+        } catch (Exception e) {
+            log.warn("告警规则缓存初始化失败: {}", e.getMessage());
+        }
         // 离线检测：每 30s 扫描一次
         scheduler.scheduleAtFixedRate(this::scanOffline, 30, 30, TimeUnit.SECONDS);
         log.info("告警引擎已启动");
@@ -126,7 +130,12 @@ public class AlertEngine {
         try {
             AlertRule rule = alertService.getRule("OFFLINE");
             if (rule == null || Boolean.FALSE.equals(rule.getEnabled())) return;
-            int thresholdSec = (int) (rule.getThreshold() * 60);
+            double threshold = rule.getThreshold();
+            if (Double.isNaN(threshold) || threshold <= 0) {
+                log.warn("告警规则 OFFLINE 阈值异常: {}", threshold);
+                return;
+            }
+            int thresholdSec = (int) Math.min(threshold * 60, Integer.MAX_VALUE);
 
             Set<String> onlineIds = redis.opsForSet().members("vehicle:online");
             if (onlineIds == null) return;
@@ -143,16 +152,30 @@ public class AlertEngine {
                     // 查 rt hash 是否还有数据（TTL 10s 内会被清掉）
                     Map<Object, Object> rtData = redis.opsForHash().entries("vehicle:rt:" + vehicleId);
                     if (!rtData.isEmpty()) {
-                        // 还有数据，说明 lastSeen 可能过期，重置
-                        lastSeen.put(vehicleId, now);
-                        continue;
+                        // 校验 Redis 中的时间戳是否新鲜，避免陈旧数据误重置 lastSeen
+                        String tsStr = (String) rtData.get("ts");
+                        if (tsStr != null && !tsStr.isBlank()) {
+                            try {
+                                Instant rtTs = Instant.parse(tsStr);
+                                long rtAge = Duration.between(rtTs, now).getSeconds();
+                                if (rtAge < thresholdSec) {
+                                    lastSeen.put(vehicleId, now);
+                                    continue;
+                                }
+                            } catch (Exception e) {
+                                // ts 无效，继续离线判定
+                            }
+                        }
                     }
 
                     // 离线
                     String plateNo = "";
                     try {
                         String meta = redis.opsForValue().get("vehicle:meta:" + vehicleId);
-                        if (meta != null) plateNo = meta.split(",")[0];
+                        if (meta != null && !meta.isEmpty()) {
+                            String[] parts = meta.split(",", 2);
+                            if (parts.length > 0) plateNo = parts[0];
+                        }
                     } catch (Exception ignore) {}
                     alertService.fireAlert(vehicleId, "OFFLINE",
                             String.format("车辆离线：%s 已 %d 分钟无数据", plateNo, elapsed / 60),

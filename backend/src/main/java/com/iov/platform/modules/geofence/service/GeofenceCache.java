@@ -20,12 +20,7 @@ public class GeofenceCache {
 
     private volatile Map<Long, Entry> entries = new HashMap<>();
 
-    @PostConstruct
-    public void init() {
-        log.info("GeofenceCache 初始化完成");
-    }
-
-    public synchronized void load(List<Map<String, Object>> rows) {
+    public void load(List<Map<String, Object>> rows) {
         Map<Long, Entry> next = new HashMap<>();
         for (Map<String, Object> row : rows) {
             Long id = ((Number) row.get("id")).longValue();

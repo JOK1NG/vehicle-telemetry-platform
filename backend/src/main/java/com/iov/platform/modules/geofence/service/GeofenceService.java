@@ -13,6 +13,7 @@ import com.iov.platform.modules.geofence.mapper.GeofenceVehicleMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -129,8 +130,10 @@ public class GeofenceService extends ServiceImpl<GeofenceMapper, Geofence> {
             GeofenceVehicle gv = new GeofenceVehicle(geofenceId, vid);
             try {
                 geofenceVehicleMapper.insert(gv);
-            } catch (Exception ignore) {
-                // 重复主键忽略
+            } catch (DuplicateKeyException e) {
+                log.debug("围栏-车辆关联已存在，跳过: geofenceId={}, vehicleId={}", geofenceId, vid);
+            } catch (Exception e) {
+                log.warn("绑定围栏车辆失败 geofenceId={}, vehicleId={}: {}", geofenceId, vid, e.getMessage());
             }
         }
     }
@@ -167,36 +170,42 @@ public class GeofenceService extends ServiceImpl<GeofenceMapper, Geofence> {
     }
 
     private void upsertGeom(Geofence g) {
-        try {
-            if ("CIRCLE".equals(g.getType())) {
-                // ST_Buffer 用 geography（米）做精确距离缓冲，再转回 geometry 存到 GEOMETRY 列
+        if ("CIRCLE".equals(g.getType())) {
+            try {
                 jdbcTemplate.update(
                         "UPDATE geofence SET geom = ST_Buffer(ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)::geometry " +
                                 "WHERE id = ?",
                         g.getCenterLng(), g.getCenterLat(), g.getRadiusM(), g.getId());
-            } else {
-                // ST_MakePolygon from closed ring
-                List<GeofenceDto.LngLat> pts = null;
-                try {
-                    if (g.getPolygon() != null && !g.getPolygon().isBlank()) {
-                        pts = objectMapper.readValue(g.getPolygon(), new TypeReference<List<GeofenceDto.LngLat>>() {});
-                    }
-                } catch (Exception e) {
-                    log.warn("解析 polygon 失败: {}", e.getMessage());
-                }
-                if (pts == null || pts.isEmpty()) return;
-                StringBuilder wkt = new StringBuilder("POLYGON((");
-                for (int i = 0; i < pts.size(); i++) {
-                    if (i > 0) wkt.append(", ");
-                    wkt.append(pts.get(i).getLng()).append(" ").append(pts.get(i).getLat());
-                }
-                // 闭合：首尾相同
-                wkt.append(", ").append(pts.get(0).getLng()).append(" ").append(pts.get(0).getLat());
-                wkt.append("))");
-                jdbcTemplate.update("UPDATE geofence SET geom = ST_GeomFromText(?, 4326) WHERE id = ?", wkt.toString(), g.getId());
+            } catch (Exception e) {
+                log.error("更新 CIRCLE geom 失败 geofenceId={}: {}", g.getId(), e.getMessage());
             }
-        } catch (Exception e) {
-            log.error("更新 geom 失败 geofenceId={}: {}", g.getId(), e.getMessage());
+        } else {
+            // 多边形解析失败必须抛异常，避免 polygon 有数据但 geom 为 null 的不一致状态
+            List<GeofenceDto.LngLat> pts;
+            if (g.getPolygon() == null || g.getPolygon().isBlank()) {
+                throw new IllegalArgumentException("多边形围栏缺少 polygon 数据 geofenceId=" + g.getId());
+            }
+            try {
+                pts = objectMapper.readValue(g.getPolygon(), new TypeReference<List<GeofenceDto.LngLat>>() {});
+            } catch (Exception e) {
+                throw new IllegalStateException("解析 polygon 失败 geofenceId=" + g.getId(), e);
+            }
+            if (pts == null || pts.isEmpty()) {
+                throw new IllegalStateException("多边形围栏顶点为空 geofenceId=" + g.getId());
+            }
+            StringBuilder wkt = new StringBuilder("POLYGON((");
+            for (int i = 0; i < pts.size(); i++) {
+                if (i > 0) wkt.append(", ");
+                wkt.append(pts.get(i).getLng()).append(" ").append(pts.get(i).getLat());
+            }
+            // 闭合：首尾相同
+            wkt.append(", ").append(pts.get(0).getLng()).append(" ").append(pts.get(0).getLat());
+            wkt.append("))");
+            try {
+                jdbcTemplate.update("UPDATE geofence SET geom = ST_GeomFromText(?, 4326) WHERE id = ?", wkt.toString(), g.getId());
+            } catch (Exception e) {
+                log.error("更新 POLYGON geom 失败 geofenceId={}: {}", g.getId(), e.getMessage());
+            }
         }
     }
 

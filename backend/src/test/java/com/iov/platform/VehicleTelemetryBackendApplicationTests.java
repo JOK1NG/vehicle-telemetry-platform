@@ -17,7 +17,9 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
     "spring.flyway.enabled=false",
     "spring.data.redis.host=localhost",
     "spring.data.redis.port=0",
-    "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration"
+    "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration",
+    "jwt.secret=this_is_a_test_secret_key_for_jwt_at_least_32_chars_long",
+    "jwt.expiration=86400000"
 })
 @ActiveProfiles("test")
 class VehicleTelemetryBackendApplicationTests {

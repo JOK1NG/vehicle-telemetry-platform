@@ -19,6 +19,8 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class GeofenceEvaluator {
 
+    private static final double RAY_CASTING_EPSILON = 1e-12;
+
     private final GeofenceCache cache;
     private final ObjectMapper objectMapper;
 
@@ -71,7 +73,7 @@ public class GeofenceEvaluator {
             double xj = ring.get(j).get(0).asDouble();
             double yj = ring.get(j).get(1).asDouble();
             boolean intersect = ((yi > lat) != (yj > lat)) &&
-                    (lng < (xj - xi) * (lat - yi) / (yj - yi + 1e-12) + xi);
+                    (lng < (xj - xi) * (lat - yi) / (yj - yi + RAY_CASTING_EPSILON) + xi);
             if (intersect) inside = !inside;
         }
         return inside;
