@@ -268,3 +268,80 @@ export const BrainIcon = (props: IconProps) => (
     <path d="M12 4.5v15" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" />
   </svg>
 );
+
+export const BellIcon = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path
+      d="M6 8a6 6 0 0 1 12 0c0 4 1.5 6 2 7H4c.5-1 2-3 2-7Z"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinejoin="round"
+    />
+    <path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" />
+  </svg>
+);
+
+export const AlertTriangleIcon = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path
+      d="M12 3.5 2.5 19h19L12 3.5Z"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinejoin="round"
+    />
+    <path d="M12 10v4M12 17v.5" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" />
+  </svg>
+);
+
+export const FenceIcon = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M4 20V4l5 4 5-4 5 4v12" stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round" />
+    <path d="M4 9h16M4 14h16" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" />
+  </svg>
+);
+
+export const PlayIcon = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M7 5v14l12-7L7 5Z" fill="currentColor" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" />
+  </svg>
+);
+
+export const PauseIcon = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M8 5v14M16 5v14" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" />
+  </svg>
+);
+
+export const SkipBackIcon = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M19 5L9 12l10 7V5Z" fill="currentColor" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" />
+    <path d="M5 5v14" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" />
+  </svg>
+);
+
+export const SkipForwardIcon = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path d="M5 5l10 7-10 7V5Z" fill="currentColor" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" />
+    <path d="M19 5v14" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" />
+  </svg>
+);
+
+export const RouteIcon = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <circle cx="6" cy="6" r="2" stroke="currentColor" strokeWidth={1.6} />
+    <circle cx="18" cy="18" r="2" stroke="currentColor" strokeWidth={1.6} />
+    <path d="M6 8v4a4 4 0 0 0 4 4h4a4 4 0 0 1 4 4" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" />
+  </svg>
+);
+
+export const MapMarkerIcon = (props: IconProps) => (
+  <svg {...baseProps} {...props}>
+    <path
+      d="M12 22s8-7.5 8-13a8 8 0 0 0-16 0c0 5.5 8 13 8 13Z"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinejoin="round"
+    />
+    <circle cx="12" cy="9" r="2.5" stroke="currentColor" strokeWidth={1.6} />
+  </svg>
+);

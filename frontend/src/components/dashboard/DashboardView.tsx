@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { realtimeApi } from '../../api/realtime';
 import { useVehicleSocket } from '../../hooks/useVehicleSocket';
 import type { VehicleSnapshot, VehicleUpdateData } from '../../types';
@@ -18,8 +19,11 @@ import { cx, fmtNum, fmtTime } from '../common/utils';
 import { TelemetryMap, focusMapOnVehicle } from './TelemetryMap';
 import { AiInsightPanel } from './AiInsightPanel';
 import { RealtimeList } from './RealtimeList';
+import { AlertDetailDialog } from '../alerts/AlertList';
+import { useAlertsStore } from '../../stores/alerts';
 
 export function DashboardView() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [realtimeMap, setRealtimeMap] = useState<Map<number, VehicleUpdateData & { lastTs: number }>>(
     new Map()
   );
@@ -27,6 +31,30 @@ export function DashboardView() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const mapRef = useRef<Parameters<typeof focusMapOnVehicle>[0]>(null);
+
+  // 路由参数：?focusVehicleId= &alertId= 触发高亮 + 弹告警详情
+  const focusVehicleId = searchParams.get('focusVehicleId');
+  const alertId = searchParams.get('alertId');
+  const focusAlert = useAlertsStore((s) =>
+    alertId ? s.items.find((a) => a.id === Number(alertId)) ?? null : null
+  );
+  useEffect(() => {
+    if (focusVehicleId) {
+      const id = Number(focusVehicleId);
+      setSelectedId(id);
+      // 等 realtimeList 拿到坐标后再 flyTo
+      const v = realtimeMap.get(id);
+      if (v && mapRef.current) {
+        focusMapOnVehicle(mapRef.current, v.lng, v.lat);
+      }
+    }
+  }, [focusVehicleId, realtimeMap]);
+  const clearFocus = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('focusVehicleId');
+    next.delete('alertId');
+    setSearchParams(next, { replace: true });
+  };
 
   const handleEnvelope = (vehicles: VehicleUpdateData[], ts?: string) => {
     setRealtimeMap((prev) => {
@@ -194,6 +222,8 @@ export function DashboardView() {
         avgSpeed={avgSpeed}
         avgBattery={avgBattery}
       />
+
+      {focusAlert && <AlertDetailDialog alert={focusAlert} onClose={clearFocus} />}
     </div>
   );
 }

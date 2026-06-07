@@ -1,6 +1,7 @@
 package com.iov.platform.modules.realtime.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.iov.platform.modules.alert.service.AlertEngine;
 import com.iov.platform.modules.realtime.dto.VehicleUpdateMessage;
 import com.iov.platform.modules.vehicle.entity.Vehicle;
 import com.iov.platform.modules.vehicle.mapper.VehicleMapper;
@@ -33,6 +34,7 @@ class RealtimeServiceTest {
     private SimpMessagingTemplate messagingTemplate;
     private ObjectMapper objectMapper;
     private VehicleMapper vehicleMapper;
+    private AlertEngine alertEngine;
     private RealtimeService service;
 
     @BeforeEach
@@ -42,6 +44,7 @@ class RealtimeServiceTest {
         messagingTemplate = mock(SimpMessagingTemplate.class);
         objectMapper = new ObjectMapper();
         vehicleMapper = mock(VehicleMapper.class);
+        alertEngine = mock(AlertEngine.class);
 
         // Mock Redis operations
         HashOperations<String, Object, Object> hashOps = mock(HashOperations.class);
@@ -52,7 +55,7 @@ class RealtimeServiceTest {
         when(redis.opsForSet()).thenReturn(setOps);
         when(redis.opsForValue()).thenReturn(valOps);
 
-        service = new RealtimeService(redis, jdbc, messagingTemplate, objectMapper, vehicleMapper);
+        service = new RealtimeService(redis, jdbc, messagingTemplate, objectMapper, vehicleMapper, alertEngine);
     }
 
     // ===== extractVehicleId =====
