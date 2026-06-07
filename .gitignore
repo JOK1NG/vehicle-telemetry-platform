@@ -5,6 +5,7 @@
 .agent_context/
 .multica/
 .opencode/
+.devin/
 AGENTS.md
 
 # Environment variables
