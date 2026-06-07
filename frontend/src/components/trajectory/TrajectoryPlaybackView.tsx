@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { vehicleApi } from '../../api/vehicle';
 import { trajectoryApi } from '../../api/trajectory';
 import { useAMap } from '../../hooks/useAMap';
+import { Select } from '../common/Select';
 import { cx, fmtTime } from '../common/utils';
 import {
   PauseIcon,
@@ -196,6 +197,15 @@ export function TrajectoryPlaybackView() {
 
   const currentPoint = useMemo(() => points[cursor] ?? null, [points, cursor]);
   const progressPct = points.length > 0 ? (cursor / (points.length - 1)) * 100 : 0;
+  const vehicleOptions = useMemo(
+    () =>
+      vehicles.map((v) => ({
+        value: v.id,
+        label: v.plateNo,
+        description: v.model ? `(${v.model})` : undefined,
+      })),
+    [vehicles]
+  );
 
   return (
     <div className="view-in space-y-4">
@@ -218,18 +228,13 @@ export function TrajectoryPlaybackView() {
             <div className="text-[12px] font-semibold flex items-center gap-1.5">
               <VehiclesIcon className="w-3.5 h-3.5" /> 选择车辆
             </div>
-            <select
-              value={vehicleId ?? ''}
-              onChange={(e) => onVehicleChange(Number(e.target.value))}
-              className="w-full h-9 px-2 rounded-md border border-[var(--input)] bg-[var(--background)] text-[12.5px]"
-            >
-              {vehicles.length === 0 && <option value="">加载中…</option>}
-              {vehicles.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.plateNo} {v.model ? `(${v.model})` : ''}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={vehicleId}
+              onChange={onVehicleChange}
+              options={vehicleOptions}
+              loading={vehicles.length === 0}
+              placeholder="选择车辆"
+            />
           </div>
 
           <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3 space-y-2">

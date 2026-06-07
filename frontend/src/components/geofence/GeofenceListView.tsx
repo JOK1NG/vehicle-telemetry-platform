@@ -4,6 +4,7 @@ import { vehicleApi } from '../../api/vehicle';
 import { useAMap } from '../../hooks/useAMap';
 import { cx } from '../common/utils';
 import { ModalShell } from '../common/ModalShell';
+import { ConfirmDialog } from '../vehicles/ConfirmDialog';
 import { FenceIcon, PlusIcon, TrashIcon, XIcon } from '../common/Icons';
 import type { Geofence, LngLat, GeofenceType, Vehicle } from '../../types';
 import { toast } from '../common/Toast';
@@ -15,6 +16,7 @@ export function GeofenceListView() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Geofence | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Geofence | null>(null);
   const [drawMode, setDrawMode] = useState<GeofenceType | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -176,11 +178,12 @@ export function GeofenceListView() {
     }
   };
 
-  const remove = async (id: number) => {
-    if (!confirm('确认删除该围栏？')) return;
+  const handleDelete = async (id: number) => {
     try {
       await geofenceApi.remove(id);
       toast.success('已删除');
+      setConfirmDelete(null);
+      if (selectedId === id) setSelectedId(null);
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : '删除失败');
@@ -259,7 +262,7 @@ export function GeofenceListView() {
                   编辑
                 </button>
                 <button
-                  onClick={(e) => { e.stopPropagation(); remove(g.id); }}
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(g); }}
                   className="text-[var(--muted-foreground)] hover:text-[var(--destructive)]"
                   title="删除"
                 >
@@ -282,6 +285,16 @@ export function GeofenceListView() {
           vehicles={vehicles}
           onCancel={() => { setEditing(null); setDrawMode(null); }}
           onSave={save}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="确认删除围栏？"
+          message={`围栏「${confirmDelete.name}」将会被永久删除，关联的进出告警规则也将失效。`}
+          confirmText="删除"
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => handleDelete(confirmDelete.id)}
         />
       )}
     </div>

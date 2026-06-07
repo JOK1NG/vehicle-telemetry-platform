@@ -68,7 +68,8 @@ export function AlertDetailDialog({ alert, onClose }: DetailProps) {
   const goMap = () => {
     if (alert.lng != null && alert.lat != null) {
       onClose();
-      navigate(`/dashboard?focusVehicleId=${alert.vehicleId}&alertId=${alert.id}`);
+      // 仅聚焦车辆，不带 alertId——避免大屏根据 URL 再次弹出告警详情遮罩
+      navigate(`/dashboard?focusVehicleId=${alert.vehicleId}`);
     }
   };
   const goTrajectory = () => {
