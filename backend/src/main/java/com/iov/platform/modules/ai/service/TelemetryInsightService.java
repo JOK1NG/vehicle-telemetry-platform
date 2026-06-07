@@ -23,6 +23,8 @@ import java.util.Map;
 public class TelemetryInsightService {
 
     private static final List<String> VALID_SEVERITIES = List.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
+    private static final int MAX_ANALYZE_ATTEMPTS = 3;
+    private static final int TELEMETRY_QUERY_LIMIT = 200;
 
     private final JdbcTemplate jdbcTemplate;
     private final AiChatGateway chatGateway;
@@ -31,15 +33,29 @@ public class TelemetryInsightService {
     private final AiCallLogService logService;
 
     public TelemetryInsightResponse analyze(TelemetryInsightRequest request, Long userId) {
-        String contextJson = buildContext(request);
+        long startedAt = System.currentTimeMillis();
+        TelemetryContext context = buildContext(request);
+        String contextJson = context.json();
         String systemPrompt = promptService.getSystemPrompt("telemetry_insight");
         String model = chatGateway.getDefaultModel();
         String provider = chatGateway.getProvider();
 
+        if (!context.hasDiagnosticSignals()) {
+            int latencyMs = (int) (System.currentTimeMillis() - startedAt);
+            TelemetryInsightResponse response = noTelemetryResponse(latencyMs);
+            logService.log("telemetry_insight", model, provider,
+                    "skipped=no_telemetry; " + reqSummary(systemPrompt, contextJson),
+                    response.getSummary(),
+                    true, latencyMs, 0, userId);
+            return response;
+        }
+
         TelemetryInsightResponse lastParsed = null;
         Exception lastException = null;
-        for (int attempt = 1; attempt <= 2; attempt++) {
-            String userPayload = attempt == 1 ? contextJson : retryPrompt(contextJson);
+        ValidationIssue retryIssue = ValidationIssue.INVALID_SCHEMA;
+        String previousOutput = "";
+        for (int attempt = 1; attempt <= MAX_ANALYZE_ATTEMPTS; attempt++) {
+            String userPayload = attempt == 1 ? contextJson : retryPrompt(contextJson, retryIssue, previousOutput);
             try {
                 AiChatGateway.ChatResult callResult = chatGateway.chat(new AiChatGateway.ChatRequest(
                         model,
@@ -49,37 +65,56 @@ public class TelemetryInsightService {
                         true
                 ));
                 TelemetryInsightResponse parsed = parseResponse(callResult.content(), callResult.latencyMs());
-                boolean valid = isValid(parsed);
+                ValidationIssue issue = validationIssue(parsed, callResult.content());
+                boolean valid = issue == ValidationIssue.NONE;
                 logService.log("telemetry_insight", model, provider,
-                        "attempt=" + attempt + "; " + reqSummary(systemPrompt, userPayload),
+                        "attempt=" + attempt + "; issue=" + issue.label() + "; "
+                                + reqSummary(systemPrompt, userPayload),
                         truncate(callResult.content(), 500),
                         valid, (int) callResult.latencyMs(), (int) callResult.totalTokens(), userId);
                 if (valid) {
                     return parsed;
                 }
                 lastParsed = parsed;
+                retryIssue = issue;
+                previousOutput = callResult.content();
             } catch (Exception e) {
                 lastException = e;
+                retryIssue = ValidationIssue.MODEL_ERROR;
+                previousOutput = e.getMessage();
                 logService.log("telemetry_insight", model, provider,
                         "attempt=" + attempt + "; " + reqSummary(systemPrompt, userPayload),
                         "ERROR: " + e.getMessage(),
                         false, null, null, userId);
             }
         }
+        String message = "AI telemetry insight did not produce valid JSON after "
+                + MAX_ANALYZE_ATTEMPTS + " attempts; lastIssue=" + retryIssue.label();
         if (lastParsed != null) {
-            return lastParsed;
+            throw new IllegalStateException(message);
         }
-        throw new IllegalStateException("AI telemetry insight failed after retry", lastException);
+        throw new IllegalStateException(message, lastException);
     }
 
     public Flux<TelemetryInsightStreamEvent> streamAnalyze(TelemetryInsightRequest request, Long userId) {
-        String contextJson = buildContext(request);
+        TelemetryContext context = buildContext(request);
+        String contextJson = context.json();
         String systemPrompt = promptService.getSystemPrompt("telemetry_insight");
         String model = chatGateway.getDefaultModel();
         String provider = chatGateway.getProvider();
         StringBuilder raw = new StringBuilder();
         long startedAt = System.currentTimeMillis();
         String requestSummary = reqSummary(systemPrompt, contextJson);
+
+        if (!context.hasDiagnosticSignals()) {
+            int latencyMs = (int) (System.currentTimeMillis() - startedAt);
+            TelemetryInsightResponse response = noTelemetryResponse(latencyMs);
+            logService.log("telemetry_insight_stream", model, provider,
+                    "skipped=no_telemetry; " + requestSummary,
+                    response.getSummary(),
+                    true, latencyMs, 0, userId);
+            return Flux.just(TelemetryInsightStreamEvent.finalResult(response, latencyMs));
+        }
 
         return Flux.defer(() -> chatGateway.stream(new AiChatGateway.ChatRequest(
                         model,
@@ -93,14 +128,15 @@ public class TelemetryInsightService {
                 .concatWith(Mono.fromSupplier(() -> {
                     long latencyMs = System.currentTimeMillis() - startedAt;
                     TelemetryInsightResponse parsed = parseResponse(raw.toString(), latencyMs);
-                    boolean valid = isValid(parsed);
+                    ValidationIssue issue = validationIssue(parsed, raw.toString());
+                    boolean valid = issue == ValidationIssue.NONE;
                     logService.log("telemetry_insight_stream", model, provider,
                             requestSummary,
                             truncate(raw.toString(), 500),
                             valid, (int) latencyMs, null, userId);
                     if (!valid) {
                         return TelemetryInsightStreamEvent.error(
-                                "AI 流式输出未满足接口 JSON schema，请重试。",
+                                "AI 流式输出未满足接口 JSON schema（" + issue.label() + "），请重试。",
                                 latencyMs
                         );
                     }
@@ -128,29 +164,45 @@ public class TelemetryInsightService {
         return s.length() <= maxLen ? s : s.substring(0, maxLen);
     }
 
-    private String buildContext(TelemetryInsightRequest request) {
+    private TelemetryContext buildContext(TelemetryInsightRequest request) {
         Map<String, Object> ctx = new LinkedHashMap<>();
 
         ctx.put("vehicleId", request.getVehicleId());
         ctx.put("timeRange", request.getTimeRange());
 
+        Map<String, List<Double>> metrics;
         if (request.getMetrics() != null && !request.getMetrics().isEmpty()) {
-            ctx.put("metrics", request.getMetrics());
+            metrics = request.getMetrics();
+            ctx.put("telemetrySource", "request.metrics");
         } else {
-            ctx.put("telemetry", queryTelemetry(request.getVehicleId(),
+            metrics = queryTelemetry(request.getVehicleId(),
                     request.getTimeRange().getStart(),
-                    request.getTimeRange().getEnd()));
+                    request.getTimeRange().getEnd());
+            ctx.put("telemetrySource", "database.telemetry");
         }
+        ctx.put("telemetrySampleLimit", TELEMETRY_QUERY_LIMIT);
+        Map<String, Object> metricSummary = summarizeMetrics(metrics);
+        ctx.put("metricSummary", metricSummary);
 
         if (request.getAlerts() != null && !request.getAlerts().isEmpty()) {
             ctx.put("alerts", request.getAlerts());
+        } else {
+            ctx.put("alerts", List.of());
         }
 
         try {
-            return objectMapper.writeValueAsString(ctx);
+            return new TelemetryContext(
+                    objectMapper.writeValueAsString(ctx),
+                    !metricSummary.isEmpty(),
+                    request.getAlerts() != null && !request.getAlerts().isEmpty()
+            );
         } catch (Exception e) {
             log.warn("Failed to serialize telemetry context, falling back to toString", e);
-            return ctx.toString();
+            return new TelemetryContext(
+                    ctx.toString(),
+                    !metricSummary.isEmpty(),
+                    request.getAlerts() != null && !request.getAlerts().isEmpty()
+            );
         }
     }
 
@@ -160,7 +212,7 @@ public class TelemetryInsightService {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                     "SELECT speed, heading, battery FROM telemetry "
                   + "WHERE vehicle_id = ? AND time BETWEEN ?::timestamptz AND ?::timestamptz "
-                  + "ORDER BY time ASC LIMIT 200",
+                  + "ORDER BY time ASC LIMIT " + TELEMETRY_QUERY_LIMIT,
                     vehicleId, start, end
             );
 
@@ -175,6 +227,50 @@ public class TelemetryInsightService {
         return metrics;
     }
 
+    private Map<String, Object> summarizeMetrics(Map<String, List<Double>> metrics) {
+        Map<String, Object> summaries = new LinkedHashMap<>();
+        if (metrics == null || metrics.isEmpty()) {
+            return summaries;
+        }
+        metrics.forEach((key, values) -> {
+            Map<String, Object> summary = summarizeMetric(values);
+            if (!summary.isEmpty()) {
+                summaries.put(key, summary);
+            }
+        });
+        return summaries;
+    }
+
+    private Map<String, Object> summarizeMetric(List<Double> values) {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        if (values == null || values.isEmpty()) {
+            return summary;
+        }
+        List<Double> cleaned = values.stream()
+                .filter(v -> v != null && !v.isNaN() && !v.isInfinite())
+                .toList();
+        if (cleaned.isEmpty()) {
+            return summary;
+        }
+
+        double min = cleaned.stream().mapToDouble(Double::doubleValue).min().orElse(0);
+        double max = cleaned.stream().mapToDouble(Double::doubleValue).max().orElse(0);
+        double avg = cleaned.stream().mapToDouble(Double::doubleValue).average().orElse(0);
+        double first = cleaned.get(0);
+        double last = cleaned.get(cleaned.size() - 1);
+        double delta = last - first;
+
+        summary.put("count", cleaned.size());
+        summary.put("min", roundMetric(min));
+        summary.put("max", roundMetric(max));
+        summary.put("avg", roundMetric(avg));
+        summary.put("first", roundMetric(first));
+        summary.put("last", roundMetric(last));
+        summary.put("delta", roundMetric(delta));
+        summary.put("trend", trend(delta));
+        return summary;
+    }
+
     private void addMetric(Map<String, List<Double>> metrics, String key, Object val) {
         if (val instanceof Number n) {
             metrics.computeIfAbsent(key, k -> new java.util.ArrayList<>()).add(n.doubleValue());
@@ -183,18 +279,7 @@ public class TelemetryInsightService {
 
     private TelemetryInsightResponse parseResponse(String raw, long latencyMs) {
         try {
-            // Strip possible markdown code fences
-            String json = raw.trim();
-            if (json.startsWith("```json")) {
-                json = json.substring(7);
-            } else if (json.startsWith("```")) {
-                json = json.substring(3);
-            }
-            if (json.endsWith("```")) {
-                json = json.substring(0, json.length() - 3);
-            }
-            json = json.trim();
-
+            String json = stripFence(raw);
             Map<String, Object> parsed = objectMapper.readValue(json,
                     new TypeReference<Map<String, Object>>() {});
             List<String> findings = stringListField(parsed, "findings");
@@ -256,21 +341,39 @@ public class TelemetryInsightService {
         return item.toString();
     }
 
-    private String retryPrompt(String contextJson) {
+    private String retryPrompt(String contextJson, ValidationIssue issue, String previousOutput) {
         return """
-                上一次输出未满足接口 JSON schema。请重新分析下面的车辆遥测上下文。
-                禁止复述输入，禁止输出 markdown，禁止省略 summary。
-                只能输出一个 JSON 对象：
+                修正上一次输出。问题：%s。
+                禁止复述输入，禁止 markdown，禁止解释过程。
+                不要继续上文，重新输出一个完整 JSON：
                 {"summary":"...","severity":"LOW|MEDIUM|HIGH|CRITICAL","findings":["..."],"recommendations":["..."]}
+                findings 和 recommendations 各 2-4 条短句。
 
-                车辆遥测上下文：
-                """ + contextJson;
+                上一次输出片段：
+                %s
+
+                遥测摘要：
+                %s
+                """.formatted(issue.label(), truncate(previousOutput, 300), contextJson);
     }
 
-    private boolean isValid(TelemetryInsightResponse response) {
-        return response != null
-                && StringUtils.hasText(response.getSummary())
-                && VALID_SEVERITIES.contains(response.getSeverity());
+    private ValidationIssue validationIssue(TelemetryInsightResponse response, String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return ValidationIssue.EMPTY_OUTPUT;
+        }
+        if (looksTruncatedJson(raw)) {
+            return ValidationIssue.TRUNCATED_JSON;
+        }
+        if (looksLikeEcho(raw)) {
+            return ValidationIssue.ECHOED_INPUT;
+        }
+        if (response == null || !StringUtils.hasText(response.getSummary())) {
+            return ValidationIssue.INVALID_SCHEMA;
+        }
+        if (!VALID_SEVERITIES.contains(response.getSeverity())) {
+            return ValidationIssue.UNKNOWN_SEVERITY;
+        }
+        return ValidationIssue.NONE;
     }
 
     private String normalizeSeverity(String severity) {
@@ -289,5 +392,116 @@ public class TelemetryInsightService {
             return "发现 " + findings.size() + " 项遥测现象：" + findings.get(0);
         }
         return "AI 返回了结构化诊断，但未提供摘要。";
+    }
+
+    private boolean looksLikeEcho(String raw) {
+        String json = raw.trim();
+        return json.startsWith("{")
+                && json.contains("\"vehicleId\"")
+                && !json.contains("\"severity\"")
+                && !json.contains("\"findings\"");
+    }
+
+    private boolean looksTruncatedJson(String raw) {
+        String json = stripFence(raw);
+        if (!json.startsWith("{")) {
+            return false;
+        }
+        if (!json.endsWith("}")) {
+            return true;
+        }
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (c == '"') {
+                inString = !inString;
+                continue;
+            }
+            if (inString) {
+                continue;
+            }
+            if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+            }
+            if (depth < 0) {
+                return true;
+            }
+        }
+        return depth != 0 || inString;
+    }
+
+    private String stripFence(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String json = raw.trim();
+        if (json.startsWith("```json")) {
+            json = json.substring(7);
+        } else if (json.startsWith("```")) {
+            json = json.substring(3);
+        }
+        if (json.endsWith("```")) {
+            json = json.substring(0, json.length() - 3);
+        }
+        return json.trim();
+    }
+
+    private double roundMetric(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+
+    private String trend(double delta) {
+        if (Math.abs(delta) < 0.01) {
+            return "flat";
+        }
+        return delta > 0 ? "up" : "down";
+    }
+
+    private TelemetryInsightResponse noTelemetryResponse(long latencyMs) {
+        return TelemetryInsightResponse.builder()
+                .summary("当前时间窗口内没有可用遥测样本或告警，无法进行故障诊断。")
+                .severity("LOW")
+                .findings(List.of("未查询到 speed、heading、battery 等遥测样本。"))
+                .recommendations(List.of("扩大时间窗口后重新分析。", "确认车辆遥测采集链路是否正常。"))
+                .latencyMs(latencyMs)
+                .build();
+    }
+
+    private record TelemetryContext(String json, boolean hasMetrics, boolean hasAlerts) {
+        boolean hasDiagnosticSignals() {
+            return hasMetrics || hasAlerts;
+        }
+    }
+
+    private enum ValidationIssue {
+        NONE("none"),
+        EMPTY_OUTPUT("空内容"),
+        TRUNCATED_JSON("JSON 截断或未闭合"),
+        ECHOED_INPUT("复述了输入字段"),
+        UNKNOWN_SEVERITY("severity 缺失或非法"),
+        INVALID_SCHEMA("schema 字段缺失或类型不正确"),
+        MODEL_ERROR("模型调用异常");
+
+        private final String label;
+
+        ValidationIssue(String label) {
+            this.label = label;
+        }
+
+        String label() {
+            return label;
+        }
     }
 }

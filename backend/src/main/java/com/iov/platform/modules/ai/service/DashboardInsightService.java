@@ -21,6 +21,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DashboardInsightService {
 
+    private static final List<String> VALID_SEVERITIES = List.of("LOW", "MEDIUM", "HIGH", "CRITICAL");
+    private static final int MAX_ANALYZE_ATTEMPTS = 3;
+
     private final PromptTemplateService promptService;
     private final AiCallLogService logService;
     private final ObjectMapper objectMapper;
@@ -45,26 +48,16 @@ public class DashboardInsightService {
         long parseMs = 0;
 
         try {
-            AiChatGateway.ChatResult response;
             String textContext;
+            byte[] imageBytes = null;
             if (useImageInput) {
                 long screenshotStart = System.currentTimeMillis();
-                byte[] imageBytes = getDashboardImageBytes(request, authorizationHeader, user);
+                imageBytes = getDashboardImageBytes(request, authorizationHeader, user);
                 screenshotMs = System.currentTimeMillis() - screenshotStart;
 
                 long contextStart = System.currentTimeMillis();
                 textContext = buildContext(request, null, true);
                 contextMs = System.currentTimeMillis() - contextStart;
-
-                long modelStart = System.currentTimeMillis();
-                response = chatGateway.chat(new AiChatGateway.ChatRequest(
-                        model,
-                        systemPrompt,
-                        textContext,
-                        imageBytes,
-                        true
-                ));
-                modelMs = System.currentTimeMillis() - modelStart;
             } else {
                 long screenshotStart = System.currentTimeMillis();
                 String visibleText = getDashboardVisibleText(request, authorizationHeader, user);
@@ -73,32 +66,53 @@ public class DashboardInsightService {
                 long contextStart = System.currentTimeMillis();
                 textContext = buildContext(request, visibleText, false);
                 contextMs = System.currentTimeMillis() - contextStart;
-
-                long modelStart = System.currentTimeMillis();
-                response = chatGateway.chat(new AiChatGateway.ChatRequest(
-                        model,
-                        systemPrompt,
-                        textContext,
-                        null,
-                        true
-                ));
-                modelMs = System.currentTimeMillis() - modelStart;
             }
 
-            String result = response.content();
-            long latency = System.currentTimeMillis() - start;
+            DashboardInsightResponse lastParsed = null;
+            ValidationIssue retryIssue = ValidationIssue.INVALID_SCHEMA;
+            String previousOutput = "";
+            Exception lastException = null;
+            for (int attempt = 1; attempt <= MAX_ANALYZE_ATTEMPTS; attempt++) {
+                String userPayload = attempt == 1
+                        ? textContext
+                        : retryPrompt(textContext, retryIssue, previousOutput, useImageInput);
+                long modelStart = System.currentTimeMillis();
+                AiChatGateway.ChatResult response = chatGateway.chat(new AiChatGateway.ChatRequest(
+                        model, systemPrompt, userPayload, imageBytes, true));
+                modelMs = System.currentTimeMillis() - modelStart;
 
-            logService.log("dashboard_insight", response.model(), response.provider(),
-                    (useImageInput ? "image+" : "text+") + textContext.length() + "chars",
-                    truncate(result, 500), true, (int) latency, (int) response.totalTokens(), userId);
+                String result = response.content();
+                long latency = System.currentTimeMillis() - start;
 
-            long parseStart = System.currentTimeMillis();
-            DashboardInsightResponse parsed = parseResponse(result, latency);
-            parseMs = System.currentTimeMillis() - parseStart;
-            long totalLatency = System.currentTimeMillis() - start;
-            parsed.setLatencyMs(totalLatency);
-            parsed.setTiming(timing(screenshotMs, contextMs, modelMs, parseMs, totalLatency, useImageInput));
-            return parsed;
+                long parseStart = System.currentTimeMillis();
+                DashboardInsightResponse parsed = parseResponse(result, latency);
+                parseMs = System.currentTimeMillis() - parseStart;
+                ValidationIssue issue = validationIssue(parsed, result);
+                boolean valid = issue == ValidationIssue.NONE;
+
+                logService.log("dashboard_insight", response.model(), response.provider(),
+                        "attempt=" + attempt + "; issue=" + issue.label() + "; "
+                                + (useImageInput ? "image+" : "text+") + userPayload.length() + "chars",
+                        truncate(result, 500), valid, (int) latency, (int) response.totalTokens(), userId);
+
+                if (valid) {
+                    long totalLatency = System.currentTimeMillis() - start;
+                    parsed.setLatencyMs(totalLatency);
+                    parsed.setTiming(timing(screenshotMs, contextMs, modelMs, parseMs, totalLatency, useImageInput));
+                    return parsed;
+                }
+
+                lastParsed = parsed;
+                retryIssue = issue;
+                previousOutput = result;
+            }
+
+            String message = "AI dashboard insight did not produce valid JSON after "
+                    + MAX_ANALYZE_ATTEMPTS + " attempts; lastIssue=" + retryIssue.label();
+            if (lastParsed != null) {
+                throw new IllegalStateException(message);
+            }
+            throw new IllegalStateException(message, lastException);
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - start;
             log.error("Dashboard insight failed", e);
@@ -174,6 +188,9 @@ public class DashboardInsightService {
     private boolean shouldUseImageInput(String model) {
         if ("false".equalsIgnoreCase(imageMode)) return false;
         if ("text".equalsIgnoreCase(imageMode)) return false;
+        if ("true".equalsIgnoreCase(imageMode)) return true;
+        if ("image".equalsIgnoreCase(imageMode)) return true;
+        if ("vision".equalsIgnoreCase(imageMode)) return true;
         String normalized = model != null ? model.toLowerCase() : "";
         boolean imageCapable = normalized.contains("vl")
                 || normalized.contains("vision")
@@ -184,12 +201,11 @@ public class DashboardInsightService {
 
     @SuppressWarnings("unchecked")
     private DashboardInsightResponse parseResponse(String raw, long latencyMs) {
+        if (!StringUtils.hasText(raw)) {
+            return invalidResponse(latencyMs);
+        }
         try {
-            String json = raw.trim();
-            if (json.startsWith("```json")) json = json.substring(7);
-            else if (json.startsWith("```")) json = json.substring(3);
-            if (json.endsWith("```")) json = json.substring(0, json.length() - 3);
-            json = json.trim();
+            String json = extractJsonObject(raw);
 
             Map<String, Object> parsed = objectMapper.readValue(json,
                     new TypeReference<Map<String, Object>>() {});
@@ -205,14 +221,8 @@ public class DashboardInsightService {
                     .latencyMs(latencyMs)
                     .build();
         } catch (Exception e) {
-            log.warn("Failed to parse AI dashboard insight response", e);
-            return DashboardInsightResponse.builder()
-                    .summary(raw)
-                    .severity("UNKNOWN")
-                    .findings(List.of())
-                    .recommendations(List.of())
-                    .latencyMs(latencyMs)
-                    .build();
+            log.warn("Failed to parse AI dashboard insight response: {}", e.getMessage());
+            return invalidResponse(latencyMs);
         }
     }
 
@@ -269,6 +279,128 @@ public class DashboardInsightService {
         return "AI 返回了结构化诊断，但未提供摘要。";
     }
 
+    private ValidationIssue validationIssue(DashboardInsightResponse response, String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return ValidationIssue.EMPTY_OUTPUT;
+        }
+        if (looksTruncatedJson(raw)) {
+            return ValidationIssue.TRUNCATED_JSON;
+        }
+        if (response == null || !StringUtils.hasText(response.getSummary())) {
+            return ValidationIssue.INVALID_SCHEMA;
+        }
+        if (response.getSummary().trim().startsWith("{")) {
+            return ValidationIssue.INVALID_SCHEMA;
+        }
+        if (!VALID_SEVERITIES.contains(response.getSeverity())) {
+            return ValidationIssue.UNKNOWN_SEVERITY;
+        }
+        if (response.getFindings() == null || response.getFindings().isEmpty()) {
+            return ValidationIssue.INVALID_SCHEMA;
+        }
+        if (response.getRecommendations() == null || response.getRecommendations().isEmpty()) {
+            return ValidationIssue.INVALID_SCHEMA;
+        }
+        return ValidationIssue.NONE;
+    }
+
+    private String retryPrompt(
+            String context,
+            ValidationIssue issue,
+            String previousOutput,
+            boolean includesImage) {
+        return """
+                修正上一次输出。问题：%s。
+                禁止 markdown，禁止解释过程，禁止把 JSON 当字符串输出。
+                不要继续上文，重新输出一个完整 JSON 对象：
+                {"summary":"...","severity":"LOW|MEDIUM|HIGH|CRITICAL","findings":[{"type":"...","description":"...","detail":"..."}],"recommendations":["..."]}
+                findings 和 recommendations 各 2-4 条，必须闭合所有数组和对象。
+
+                上一次输出片段：
+                %s
+
+                大屏上下文：
+                %s
+                """.formatted(issue.label(), truncate(previousOutput, 400), context
+                + (includesImage ? "\n本次仍附带同一张大屏截图。" : ""));
+    }
+
+    private String extractJsonObject(String raw) {
+        String json = stripFence(raw);
+        int start = json.indexOf('{');
+        int end = json.lastIndexOf('}');
+        if (start >= 0 && end > start) {
+            json = json.substring(start, end + 1);
+        }
+        return json.trim();
+    }
+
+    private boolean looksTruncatedJson(String raw) {
+        String json = stripFence(raw);
+        if (!json.startsWith("{")) {
+            return false;
+        }
+        if (!json.endsWith("}")) {
+            return true;
+        }
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if (escaped) {
+                escaped = false;
+                continue;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (c == '"') {
+                inString = !inString;
+                continue;
+            }
+            if (inString) {
+                continue;
+            }
+            if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+            }
+            if (depth < 0) {
+                return true;
+            }
+        }
+        return depth != 0 || inString;
+    }
+
+    private String stripFence(String raw) {
+        if (raw == null) {
+            return "";
+        }
+        String json = raw.trim();
+        if (json.startsWith("```json")) {
+            json = json.substring(7);
+        } else if (json.startsWith("```")) {
+            json = json.substring(3);
+        }
+        if (json.endsWith("```")) {
+            json = json.substring(0, json.length() - 3);
+        }
+        return json.trim();
+    }
+
+    private DashboardInsightResponse invalidResponse(long latencyMs) {
+        return DashboardInsightResponse.builder()
+                .summary("")
+                .severity("UNKNOWN")
+                .findings(List.of())
+                .recommendations(List.of())
+                .latencyMs(latencyMs)
+                .build();
+    }
+
     private static DashboardInsightResponse.Timing timing(
             long screenshotMs,
             long contextMs,
@@ -289,6 +421,25 @@ public class DashboardInsightService {
     private static String truncate(String s, int maxLen) {
         if (s == null) return null;
         return s.length() <= maxLen ? s : s.substring(0, maxLen);
+    }
+
+    private enum ValidationIssue {
+        NONE("none"),
+        EMPTY_OUTPUT("空内容"),
+        TRUNCATED_JSON("JSON 截断或未闭合"),
+        UNKNOWN_SEVERITY("severity 缺失或非法"),
+        INVALID_SCHEMA("schema 字段缺失或类型不正确"),
+        MODEL_ERROR("模型调用异常");
+
+        private final String label;
+
+        ValidationIssue(String label) {
+            this.label = label;
+        }
+
+        String label() {
+            return label;
+        }
     }
 
 }
