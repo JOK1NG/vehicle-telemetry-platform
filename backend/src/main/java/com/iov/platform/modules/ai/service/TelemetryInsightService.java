@@ -303,13 +303,12 @@ public class TelemetryInsightService {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private String stringField(Map<String, Object> map, String key) {
         Object v = map.get(key);
         return v != null ? v.toString() : "";
     }
 
-    @SuppressWarnings("unchecked")
+
     private List<String> stringListField(Map<String, Object> map, String key) {
         Object v = map.get(key);
         if (v instanceof List<?> list) {

@@ -1,6 +1,5 @@
 package com.iov.platform.modules.geofence.service;
 
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 

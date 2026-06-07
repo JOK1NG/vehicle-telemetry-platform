@@ -7,6 +7,7 @@ import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.lang.NonNull;
 import org.springframework.retry.support.RetryTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -40,7 +41,7 @@ public class SpringAiChatConfiguration {
     }
 
     @Bean
-    public ChatClient.Builder aiChatClientBuilder(OpenAiChatModel openAiChatModel) {
+    public ChatClient.Builder aiChatClientBuilder(@NonNull OpenAiChatModel openAiChatModel) {
         return ChatClient.builder(openAiChatModel);
     }
 
