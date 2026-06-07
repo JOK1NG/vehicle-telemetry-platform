@@ -50,8 +50,6 @@ public class TelemetryInsightService {
             return response;
         }
 
-        TelemetryInsightResponse lastParsed = null;
-        Exception lastException = null;
         ValidationIssue retryIssue = ValidationIssue.INVALID_SCHEMA;
         String previousOutput = "";
         for (int attempt = 1; attempt <= MAX_ANALYZE_ATTEMPTS; attempt++) {
@@ -75,11 +73,9 @@ public class TelemetryInsightService {
                 if (valid) {
                     return parsed;
                 }
-                lastParsed = parsed;
                 retryIssue = issue;
                 previousOutput = callResult.content();
             } catch (Exception e) {
-                lastException = e;
                 retryIssue = ValidationIssue.MODEL_ERROR;
                 previousOutput = e.getMessage();
                 logService.log("telemetry_insight", model, provider,
@@ -88,12 +84,13 @@ public class TelemetryInsightService {
                         false, null, null, userId);
             }
         }
-        String message = "AI telemetry insight did not produce valid JSON after "
-                + MAX_ANALYZE_ATTEMPTS + " attempts; lastIssue=" + retryIssue.label();
-        if (lastParsed != null) {
-            throw new IllegalStateException(message);
-        }
-        throw new IllegalStateException(message, lastException);
+        return TelemetryInsightResponse.builder()
+                .summary("AI 诊断未能生成有效结果（" + retryIssue.label() + "），请重试。")
+                .severity("UNKNOWN")
+                .findings(List.of())
+                .recommendations(List.of("请稍后重试 AI 诊断。"))
+                .latencyMs(System.currentTimeMillis() - startedAt)
+                .build();
     }
 
     public Flux<TelemetryInsightStreamEvent> streamAnalyze(TelemetryInsightRequest request, Long userId) {

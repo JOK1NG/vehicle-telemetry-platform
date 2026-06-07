@@ -102,9 +102,16 @@ public class DashboardScreenshotService {
     }
 
     private String dashboardUrl() {
-        String base = frontendBaseUrl.endsWith("/")
-                ? frontendBaseUrl.substring(0, frontendBaseUrl.length() - 1)
-                : frontendBaseUrl;
+        if (!StringUtils.hasText(frontendBaseUrl)) {
+            throw new IllegalStateException("截图服务前端地址未配置 (ai.dashboard-screenshot.frontend-base-url)");
+        }
+        String trimmed = frontendBaseUrl.trim();
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            throw new IllegalStateException("截图服务前端地址必须以 http:// 或 https:// 开头，当前值: " + trimmed);
+        }
+        String base = trimmed.endsWith("/")
+                ? trimmed.substring(0, trimmed.length() - 1)
+                : trimmed;
         return base + "/dashboard";
     }
 

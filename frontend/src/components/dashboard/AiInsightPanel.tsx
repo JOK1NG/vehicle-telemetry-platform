@@ -10,6 +10,7 @@ const severityColor: Record<string, string> = {
   MEDIUM: 'text-amber-500',
   HIGH: 'text-orange-500',
   CRITICAL: 'text-[var(--destructive)]',
+  UNKNOWN: 'text-[var(--muted-foreground)]',
 };
 
 const severityBg: Record<string, string> = {
@@ -17,6 +18,7 @@ const severityBg: Record<string, string> = {
   MEDIUM: 'bg-amber-500/10 border-amber-500/25',
   HIGH: 'bg-orange-500/10 border-orange-500/25',
   CRITICAL: 'bg-[var(--destructive)]/10 border-[var(--destructive)]/25',
+  UNKNOWN: 'bg-[var(--muted)] border-[var(--border)]',
 };
 
 const formatMs = (ms?: number) => `${Math.round(ms ?? 0)}ms`;

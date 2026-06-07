@@ -68,10 +68,8 @@ public class DashboardInsightService {
                 contextMs = System.currentTimeMillis() - contextStart;
             }
 
-            DashboardInsightResponse lastParsed = null;
             ValidationIssue retryIssue = ValidationIssue.INVALID_SCHEMA;
             String previousOutput = "";
-            Exception lastException = null;
             for (int attempt = 1; attempt <= MAX_ANALYZE_ATTEMPTS; attempt++) {
                 String userPayload = attempt == 1
                         ? textContext
@@ -102,18 +100,13 @@ public class DashboardInsightService {
                     return parsed;
                 }
 
-                lastParsed = parsed;
                 retryIssue = issue;
                 previousOutput = result;
             }
 
             String message = "AI dashboard insight did not produce valid JSON after "
                     + MAX_ANALYZE_ATTEMPTS + " attempts; lastIssue=" + retryIssue.label();
-            if (lastParsed != null) {
-                throw new IllegalStateException(message);
-            }
-            throw new IllegalStateException(message,
-                    lastException != null ? lastException : new IllegalStateException("All dashboard insight attempts failed"));
+            throw new IllegalStateException(message);
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - start;
             log.error("Dashboard insight failed", e);
@@ -204,7 +197,6 @@ public class DashboardInsightService {
         return imageCapable;
     }
 
-    @SuppressWarnings("unchecked")
     private DashboardInsightResponse parseResponse(String raw, long latencyMs) {
         if (!StringUtils.hasText(raw)) {
             return invalidResponse(latencyMs);
@@ -236,7 +228,6 @@ public class DashboardInsightService {
         return v != null ? v.toString() : "";
     }
 
-    @SuppressWarnings("unchecked")
     private List<String> stringListField(Map<String, Object> map, String key) {
         Object v = map.get(key);
         if (v instanceof List<?> list) {

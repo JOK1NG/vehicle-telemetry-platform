@@ -55,7 +55,6 @@ public class AiInsightController {
                             } catch (RuntimeException e) {
                                 dispose(subscriptionRef.get());
                                 safeCompleteWithError(emitter, e);
-                                throw e;
                             }
                         },
                         error -> {

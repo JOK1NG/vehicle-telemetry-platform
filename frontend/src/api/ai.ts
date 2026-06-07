@@ -112,11 +112,16 @@ export const aiApi = {
       }
       const raw = dataLines.join('\n');
       dataLines = [];
-      const payload = JSON.parse(raw) as TelemetryInsightStreamEvent;
-      payload.type = payload.type || (eventName as TelemetryInsightStreamEvent['type']);
-      const maybeResult = dispatchStreamEvent(payload, handlers);
-      if (maybeResult) {
-        finalResult = maybeResult;
+      try {
+        const payload = JSON.parse(raw) as TelemetryInsightStreamEvent;
+        payload.type = payload.type || (eventName as TelemetryInsightStreamEvent['type']);
+        const maybeResult = dispatchStreamEvent(payload, handlers);
+        if (maybeResult) {
+          finalResult = maybeResult;
+        }
+      } catch (parseErr) {
+        const msg = parseErr instanceof Error ? parseErr.message : 'SSE 数据解析失败';
+        handlers.onError?.(msg);
       }
       eventName = 'message';
     };

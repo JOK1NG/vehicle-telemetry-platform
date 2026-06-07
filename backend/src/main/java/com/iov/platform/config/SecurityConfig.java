@@ -87,8 +87,9 @@ public class SecurityConfig {
                 // 认证接口无需认证
                 .requestMatchers("/api/auth/login").permitAll()
                 // TODO: Phase 0 only - require authentication before production rollout.
-                // AI ping 测试接口无需认证（Phase 0）
-                .requestMatchers(HttpMethod.POST, "/api/ai/ping").permitAll()
+                // AI 健康探测无需认证，ping 测试需要认证
+                .requestMatchers(HttpMethod.GET, "/api/ai/health").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/ai/ping").authenticated()
 
                 // 健康检查
                 .requestMatchers("/health").permitAll()

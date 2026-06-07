@@ -59,5 +59,5 @@ logging:
     org.springframework.security: INFO
 
 jwt:
-  secret: ${JWT_SECRET:change_me_jwt_secret_please_use_long_random_string}
+  secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:86400000}
