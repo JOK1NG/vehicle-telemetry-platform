@@ -104,8 +104,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
 验证点：
-- `curl http://localhost:8080/health` 应返回 `vehicle-telemetry-backend is running`
-- `curl http://localhost:8080/actuator/health` 应返回 `{"status":"UP"}`
+- `curl http://localhost:8081/health` 应返回 `vehicle-telemetry-backend is running`
+- `curl http://localhost:8081/actuator/health` 应返回 `{"status":"UP"}`
+- `curl http://localhost:8081/api/ai/health` 应返回 AI 配置状态（无需认证）
 - 首次启动 Flyway 会自动执行 `db/migration/V1__init_schema.sql` ~ `V4__seed_demo_vehicles.sql`
 - 后端 `local` profile 默认启用**内置车辆模拟器**，启动后约 5 秒开始向 MQTT 发布遥测
 
@@ -132,7 +133,7 @@ npm run dev
 - 使用 `viewer` / `viewer123` 登录后也能查看车辆列表，但无新增/编辑/删除按钮
 - 左侧菜单「监控大屏」配置高德 Key 后应能加载高德地图并显示车辆标记；未配置 Key 时会显示提示，但登录、车辆列表与实时 WebSocket 链路仍可验证
 
-开发期 `/api/*` 与 `/ws` 会通过 Vite 代理转发到 `http://localhost:8080`。
+开发期 `/api/*` 与 `/ws` 会通过 Vite 代理转发到 `http://localhost:8081`。
 
 > **高德地图配置**
 >
@@ -226,6 +227,8 @@ mvn spring-boot:run
 | Redis 实时态 | ✅ 已验证 | `vehicle:online` + `vehicle:rt:{id}` |
 | WebSocket/STOMP 推送 | ✅ 已验证 | `/topic/vehicles` 500ms 节流广播 |
 | 高德地图多车实时显示 | ✅ 已验证 | 前端 Dashboard 订阅并渲染标记 |
+| AI 遥测诊断 | ✅ 已验证 | 流式 SSE + 非流式双模式，支持 retry |
+| AI 大屏解读 | ✅ 已验证 | 截图 + 多模态 / 文本回退 |
 | 历史轨迹回放 | ❌ 不在 MVP | 未实现 |
 | 地理围栏 | ❌ 不在 MVP | PostGIS 已就绪，但业务未实现 |
 | Kafka | ❌ 不在 MVP | 未引入 |
