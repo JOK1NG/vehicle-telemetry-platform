@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAlertsStore } from '../../stores/alerts';
 import { alertApi } from '../../api/alert';
 import { cx, fmtTime } from '../common/utils';
+import { ModalShell } from '../common/ModalShell';
 import { BellIcon, MapMarkerIcon, RouteIcon, XIcon } from '../common/Icons';
 import { SeverityBadge } from '../common/SeverityBadge';
 import { getAlertLabel, getSeverityColor, getAlertSeverity } from '../../lib/alertRules';
@@ -76,16 +77,16 @@ export function AlertDetailDialog({ alert, onClose }: DetailProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-in"
-         style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(2px)' }}>
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] w-full max-w-md modal-card-in">
+    <ModalShell onClose={onClose} size="xl">
+      {(requestClose) => (
+        <>
         <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <BellIcon className="w-4 h-4 text-[var(--primary)]" />
             <span className="text-[14px] font-semibold">告警详情</span>
             <SeverityBadge level={alert.level} />
           </div>
-          <button onClick={onClose} className="w-7 h-7 grid place-items-center rounded-md hover:bg-[var(--muted)]">
+          <button onClick={requestClose} className="w-7 h-7 grid place-items-center rounded-md hover:bg-[var(--muted)]">
             <XIcon className="w-4 h-4" />
           </button>
         </div>
@@ -165,7 +166,8 @@ export function AlertDetailDialog({ alert, onClose }: DetailProps) {
             </button>
           )}
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalShell>
   );
 }

@@ -3,6 +3,7 @@ import { geofenceApi } from '../../api/geofence';
 import { vehicleApi } from '../../api/vehicle';
 import { useAMap } from '../../hooks/useAMap';
 import { cx } from '../common/utils';
+import { ModalShell } from '../common/ModalShell';
 import { FenceIcon, PlusIcon, TrashIcon, XIcon } from '../common/Icons';
 import type { Geofence, LngLat, GeofenceType, Vehicle } from '../../types';
 import { toast } from '../common/Toast';
@@ -304,15 +305,15 @@ function GeofenceEditor({
   const [vehicleIds, setVehicleIds] = useState<number[]>(geofence.vehicleIds);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-         style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(2px)' }}>
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] w-full max-w-md">
+    <ModalShell onClose={onCancel} size="xl">
+      {(requestClose) => (
+        <>
         <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FenceIcon className="w-4 h-4 text-[var(--primary)]" />
             <span className="text-[14px] font-semibold">{geofence.id === 0 ? '新建围栏' : '编辑围栏'}</span>
           </div>
-          <button onClick={onCancel} className="w-7 h-7 grid place-items-center rounded-md hover:bg-[var(--muted)]">
+          <button onClick={requestClose} className="w-7 h-7 grid place-items-center rounded-md hover:bg-[var(--muted)]">
             <XIcon className="w-4 h-4" />
           </button>
         </div>
@@ -389,7 +390,7 @@ function GeofenceEditor({
 
         <div className="px-4 py-3 border-t border-[var(--border)] flex items-center justify-end gap-2">
           <button
-            onClick={onCancel}
+            onClick={requestClose}
             className="h-8 px-3 rounded-md text-[12px] font-medium border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--muted)]"
           >
             取消
@@ -403,7 +404,8 @@ function GeofenceEditor({
             保存
           </button>
         </div>
-      </div>
-    </div>
+        </>
+      )}
+    </ModalShell>
   );
 }

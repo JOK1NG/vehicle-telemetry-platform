@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { aiApi } from '../../api/ai';
 import type { TelemetryInsightResponse, Vehicle } from '../../types';
 import { cx } from '../common/utils';
+import { ModalShell } from '../common/ModalShell';
 import { toast } from '../common/Toast';
 import { XIcon, BrainIcon } from '../common/Icons';
 
@@ -52,7 +52,6 @@ export function TelemetryInsightDialog({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TelemetryInsightResponse | null>(null);
   const [streamText, setStreamText] = useState('');
-  const [closing, setClosing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
 
@@ -62,22 +61,6 @@ export function TelemetryInsightDialog({
       mountedRef.current = false;
     };
   }, []);
-
-  const handleClose = () => {
-    if (closing) return;
-    abortRef.current?.abort();
-    setClosing(true);
-    window.setTimeout(() => onClose(), 180);
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onClose, closing]);
 
   useEffect(() => {
     return () => abortRef.current?.abort();
@@ -120,21 +103,15 @@ export function TelemetryInsightDialog({
     }
   };
 
-  return createPortal(
-    <div
-      className={cx(
-        'fixed inset-0 z-50 grid place-items-center bg-black/60 p-4',
-        closing ? 'modal-backdrop-out' : 'modal-backdrop-in'
-      )}
-      onClick={handleClose}
+  return (
+    <ModalShell
+      onClose={onClose}
+      onBeforeClose={() => abortRef.current?.abort()}
+      size="lg"
+      className="max-h-[85vh] overflow-hidden flex flex-col"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className={cx(
-          'w-full max-w-[640px] max-h-[85vh] overflow-hidden flex flex-col bg-[var(--card)] rounded-xl border border-[var(--border)] shadow-2xl',
-          closing ? 'modal-card-out' : 'modal-card-in'
-        )}
-      >
+      {(requestClose) => (
+        <>
         <div className="px-5 py-3.5 border-b border-[var(--border)] flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <BrainIcon className="w-4 h-4 text-[var(--primary)] shrink-0" />
@@ -148,7 +125,7 @@ export function TelemetryInsightDialog({
             </div>
           </div>
           <button
-            onClick={handleClose}
+            onClick={requestClose}
             className="w-7 h-7 grid place-items-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
           >
             <XIcon className="w-3.5 h-3.5" />
@@ -305,8 +282,8 @@ export function TelemetryInsightDialog({
             </div>
           )}
         </div>
-      </div>
-    </div>,
-    document.body
+        </>
+      )}
+    </ModalShell>
   );
 }
