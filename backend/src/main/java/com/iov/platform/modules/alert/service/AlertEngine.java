@@ -111,6 +111,10 @@ public class AlertEngine {
         // 离开：之前在，现在不在
         for (Long gfId : wasInside) {
             if (!currentInside.contains(gfId)) {
+                // 配置变更（绑定移除、围栏禁用/删除）不应被当作车辆移动离开围栏
+                if (!geofenceEvaluator.appliesToVehicle(gfId, vehicleId)) {
+                    continue;
+                }
                 String name = geofenceEvaluator.getGeofenceName(gfId);
                 alertService.fireAlert(vehicleId, "GEOFENCE_EXIT",
                         String.format("车辆离开围栏：%s", name != null ? name : ("#" + gfId)),

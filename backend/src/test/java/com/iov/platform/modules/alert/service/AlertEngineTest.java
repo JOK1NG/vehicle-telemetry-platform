@@ -158,9 +158,27 @@ class AlertEngineTest {
 
         // 第二次：离开围栏 10
         when(geofenceEvaluator.findContainingGeofenceIds(1L, 121.0, 31.0)).thenReturn(Set.of());
+        when(geofenceEvaluator.appliesToVehicle(10L, 1L)).thenReturn(true);
         engine.evaluateGeofence(1L, 121.0, 31.0);
 
         verify(alertService).fireAlert(eq(1L), eq("GEOFENCE_EXIT"), contains("测试围栏"), eq(121.0), eq(31.0), isNull(), eq(10L));
+    }
+
+    @Test
+    void evaluateGeofence_bindingNoLongerApplies_clearsStateWithoutExitAlert() {
+        // 第一次：车辆在围栏 10 内
+        when(geofenceEvaluator.findContainingGeofenceIds(1L, 121.0, 31.0)).thenReturn(Set.of(10L));
+        when(geofenceEvaluator.getGeofenceName(10L)).thenReturn("测试围栏");
+        engine.evaluateGeofence(1L, 121.0, 31.0);
+        verify(alertService).fireAlert(any(), eq("GEOFENCE_ENTER"), any(), any(), any(), any(), any());
+        clearInvocations(alertService);
+
+        // 第二次：管理员移除了该车绑定，不应被当作车辆离开围栏
+        when(geofenceEvaluator.findContainingGeofenceIds(1L, 121.0, 31.0)).thenReturn(Set.of());
+        when(geofenceEvaluator.appliesToVehicle(10L, 1L)).thenReturn(false);
+        engine.evaluateGeofence(1L, 121.0, 31.0);
+
+        verify(alertService, never()).fireAlert(any(), eq("GEOFENCE_EXIT"), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -186,6 +204,7 @@ class AlertEngineTest {
 
         // 同时进入 20，离开 10
         when(geofenceEvaluator.findContainingGeofenceIds(1L, 121.0, 31.0)).thenReturn(Set.of(20L));
+        when(geofenceEvaluator.appliesToVehicle(10L, 1L)).thenReturn(true);
         when(geofenceEvaluator.getGeofenceName(20L)).thenReturn("围栏B");
         engine.evaluateGeofence(1L, 121.0, 31.0);
 
