@@ -94,7 +94,7 @@ public class AlertEngine {
      * 围栏进出判定
      */
     public void evaluateGeofence(Long vehicleId, double lng, double lat) {
-        Set<Long> currentInside = geofenceEvaluator.findContainingGeofenceIds(lng, lat);
+        Set<Long> currentInside = geofenceEvaluator.findContainingGeofenceIds(vehicleId, lng, lat);
 
         Set<Long> wasInside = vehicleInGeofences.getOrDefault(vehicleId, java.util.Collections.emptySet());
 

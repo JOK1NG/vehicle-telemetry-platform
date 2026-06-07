@@ -69,7 +69,7 @@ class AlertEngineTest {
         rule.setThreshold(80.0);
         when(alertService.getRule("OVERSPEED")).thenReturn(rule);
         when(alertService.getRule("LOW_BATTERY")).thenReturn(null);
-        when(geofenceEvaluator.findContainingGeofenceIds(anyDouble(), anyDouble())).thenReturn(Set.of());
+        when(geofenceEvaluator.findContainingGeofenceIds(anyLong(), anyDouble(), anyDouble())).thenReturn(Set.of());
 
         engine.evaluateTelemetry(1L, 121.0, 31.0, 100.0, 50.0, 1);
 
@@ -85,7 +85,7 @@ class AlertEngineTest {
         rule.setThreshold(20.0);
         when(alertService.getRule("OVERSPEED")).thenReturn(null);
         when(alertService.getRule("LOW_BATTERY")).thenReturn(rule);
-        when(geofenceEvaluator.findContainingGeofenceIds(anyDouble(), anyDouble())).thenReturn(Set.of());
+        when(geofenceEvaluator.findContainingGeofenceIds(anyLong(), anyDouble(), anyDouble())).thenReturn(Set.of());
 
         engine.evaluateTelemetry(1L, 121.0, 31.0, 50.0, 10.0, 1);
 
@@ -101,7 +101,7 @@ class AlertEngineTest {
         rule.setThreshold(80.0);
         when(alertService.getRule("OVERSPEED")).thenReturn(rule);
         when(alertService.getRule("LOW_BATTERY")).thenReturn(null);
-        when(geofenceEvaluator.findContainingGeofenceIds(anyDouble(), anyDouble())).thenReturn(Set.of());
+        when(geofenceEvaluator.findContainingGeofenceIds(anyLong(), anyDouble(), anyDouble())).thenReturn(Set.of());
 
         engine.evaluateTelemetry(1L, 121.0, 31.0, 100.0, 50.0, 1);
 
@@ -112,7 +112,7 @@ class AlertEngineTest {
     void evaluateTelemetry_ruleNull_noAlert() {
         when(alertService.getRule("OVERSPEED")).thenReturn(null);
         when(alertService.getRule("LOW_BATTERY")).thenReturn(null);
-        when(geofenceEvaluator.findContainingGeofenceIds(anyDouble(), anyDouble())).thenReturn(Set.of());
+        when(geofenceEvaluator.findContainingGeofenceIds(anyLong(), anyDouble(), anyDouble())).thenReturn(Set.of());
 
         engine.evaluateTelemetry(1L, 121.0, 31.0, 100.0, 50.0, 1);
 
@@ -128,7 +128,7 @@ class AlertEngineTest {
         rule.setThreshold(80.0);
         when(alertService.getRule("OVERSPEED")).thenReturn(rule);
         when(alertService.getRule("LOW_BATTERY")).thenReturn(null);
-        when(geofenceEvaluator.findContainingGeofenceIds(anyDouble(), anyDouble())).thenReturn(Set.of());
+        when(geofenceEvaluator.findContainingGeofenceIds(anyLong(), anyDouble(), anyDouble())).thenReturn(Set.of());
 
         engine.evaluateTelemetry(1L, 121.0, 31.0, 70.0, 50.0, 1); // 70 < 80
 
@@ -139,7 +139,7 @@ class AlertEngineTest {
 
     @Test
     void evaluateGeofence_enter_firesEnterAlert() {
-        when(geofenceEvaluator.findContainingGeofenceIds(121.0, 31.0)).thenReturn(Set.of(10L));
+        when(geofenceEvaluator.findContainingGeofenceIds(1L, 121.0, 31.0)).thenReturn(Set.of(10L));
         when(geofenceEvaluator.getGeofenceName(10L)).thenReturn("测试围栏");
 
         engine.evaluateGeofence(1L, 121.0, 31.0);
@@ -151,13 +151,13 @@ class AlertEngineTest {
     @Test
     void evaluateGeofence_exit_firesExitAlert() {
         // 第一次：进入围栏 10
-        when(geofenceEvaluator.findContainingGeofenceIds(121.0, 31.0)).thenReturn(Set.of(10L));
+        when(geofenceEvaluator.findContainingGeofenceIds(1L, 121.0, 31.0)).thenReturn(Set.of(10L));
         when(geofenceEvaluator.getGeofenceName(10L)).thenReturn("测试围栏");
         engine.evaluateGeofence(1L, 121.0, 31.0);
         verify(alertService).fireAlert(any(), eq("GEOFENCE_ENTER"), any(), any(), any(), any(), any());
 
         // 第二次：离开围栏 10
-        when(geofenceEvaluator.findContainingGeofenceIds(121.0, 31.0)).thenReturn(Set.of());
+        when(geofenceEvaluator.findContainingGeofenceIds(1L, 121.0, 31.0)).thenReturn(Set.of());
         engine.evaluateGeofence(1L, 121.0, 31.0);
 
         verify(alertService).fireAlert(eq(1L), eq("GEOFENCE_EXIT"), contains("测试围栏"), eq(121.0), eq(31.0), isNull(), eq(10L));
@@ -166,7 +166,7 @@ class AlertEngineTest {
     @Test
     void evaluateGeofence_noChange_noAlert() {
         // 连续两次都在同一个围栏内
-        when(geofenceEvaluator.findContainingGeofenceIds(121.0, 31.0)).thenReturn(Set.of(10L));
+        when(geofenceEvaluator.findContainingGeofenceIds(1L, 121.0, 31.0)).thenReturn(Set.of(10L));
         when(geofenceEvaluator.getGeofenceName(10L)).thenReturn("测试围栏");
 
         engine.evaluateGeofence(1L, 121.0, 31.0); // 进入
@@ -180,12 +180,12 @@ class AlertEngineTest {
     @Test
     void evaluateGeofence_switchGeofence_enterAndExit() {
         // 进入围栏 10
-        when(geofenceEvaluator.findContainingGeofenceIds(121.0, 31.0)).thenReturn(Set.of(10L));
+        when(geofenceEvaluator.findContainingGeofenceIds(1L, 121.0, 31.0)).thenReturn(Set.of(10L));
         when(geofenceEvaluator.getGeofenceName(10L)).thenReturn("围栏A");
         engine.evaluateGeofence(1L, 121.0, 31.0);
 
         // 同时进入 20，离开 10
-        when(geofenceEvaluator.findContainingGeofenceIds(121.0, 31.0)).thenReturn(Set.of(20L));
+        when(geofenceEvaluator.findContainingGeofenceIds(1L, 121.0, 31.0)).thenReturn(Set.of(20L));
         when(geofenceEvaluator.getGeofenceName(20L)).thenReturn("围栏B");
         engine.evaluateGeofence(1L, 121.0, 31.0);
 

@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -42,8 +43,14 @@ public class GeofenceService extends ServiceImpl<GeofenceMapper, Geofence> {
     public void refreshCache() {
         try {
             List<Map<String, Object>> rows = geofenceMapper.findAllEnabledWithGeom();
-            cache.load(rows);
-            log.info("围栏缓存已刷新，共 {} 条启用围栏", rows.size());
+            List<Map<String, Object>> enriched = rows.stream().map(row -> {
+                Map<String, Object> copy = new HashMap<>(row);
+                Long id = ((Number) row.get("id")).longValue();
+                copy.put("vehicle_ids", geofenceVehicleMapper.findVehicleIdsByGeofence(id));
+                return copy;
+            }).toList();
+            cache.load(enriched);
+            log.info("围栏缓存已刷新，共 {} 条启用围栏", enriched.size());
         } catch (Exception e) {
             log.error("刷新围栏缓存失败: {}", e.getMessage());
         }

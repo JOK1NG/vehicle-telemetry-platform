@@ -252,7 +252,7 @@ export function GeofenceListView() {
                     {g.type === 'CIRCLE' ? `圆形 · 半径 ${g.radiusM}m` : `多边形 · ${g.polygon?.length ?? 0} 顶点`}
                     {' · '}
                     {g.enabled ? '启用' : '禁用'}
-                    {g.vehicleIds.length > 0 && ` · ${g.vehicleIds.length} 车`}
+                    {g.vehicleIds.length > 0 ? ` · ${g.vehicleIds.length} 车` : ' · 全部车辆'}
                   </div>
                 </div>
                 <button
@@ -379,7 +379,9 @@ function GeofenceEditor({
           </div>
 
           <div>
-            <label className="text-[11px] text-[var(--muted-foreground)]">关联车辆（{vehicleIds.length}）</label>
+            <label className="text-[11px] text-[var(--muted-foreground)]">
+              适用车辆（{vehicleIds.length > 0 ? `${vehicleIds.length}` : '全部'}）
+            </label>
             <div className="mt-1 max-h-40 overflow-y-auto border border-[var(--border)] rounded-md p-2 space-y-1">
               {vehicles.length === 0 && <div className="text-[11px] text-[var(--muted-foreground)]">加载中…</div>}
               {vehicles.map((v) => (

@@ -28,8 +28,17 @@ public class GeofenceEvaluator {
      * 返回包含 (lng, lat) 的所有启用围栏 ID
      */
     public Set<Long> findContainingGeofenceIds(double lng, double lat) {
+        return findContainingGeofenceIds(null, lng, lat);
+    }
+
+    /**
+     * 返回包含 (lng, lat) 且适用于 vehicleId 的所有启用围栏 ID。
+     * 未绑定车辆的围栏默认适用于全部车辆。
+     */
+    public Set<Long> findContainingGeofenceIds(Long vehicleId, double lng, double lat) {
         Set<Long> result = new HashSet<>();
         for (Long id : cache.allIds()) {
+            if (vehicleId != null && !cache.appliesToVehicle(id, vehicleId)) continue;
             String geoJson = cache.getGeomGeoJson(id);
             if (geoJson == null) continue;
             try {

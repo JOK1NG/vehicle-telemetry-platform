@@ -145,6 +145,31 @@ class GeofenceEvaluatorTest {
     }
 
     @Test
+    void findContainingGeofenceIds_vehicleBindingMatches_returnsId() {
+        String geoJson = squareGeoJson(121.0, 31.0, 0.01);
+        when(cache.allIds()).thenReturn(Set.of(1L));
+        when(cache.appliesToVehicle(1L, 7L)).thenReturn(true);
+        when(cache.getGeomGeoJson(1L)).thenReturn(geoJson);
+
+        Set<Long> result = evaluator.findContainingGeofenceIds(7L, 121.0, 31.0);
+
+        assertEquals(Set.of(1L), result);
+    }
+
+    @Test
+    void findContainingGeofenceIds_vehicleBindingDoesNotMatch_skipsFence() {
+        String geoJson = squareGeoJson(121.0, 31.0, 0.01);
+        when(cache.allIds()).thenReturn(Set.of(1L));
+        when(cache.appliesToVehicle(1L, 8L)).thenReturn(false);
+        when(cache.getGeomGeoJson(1L)).thenReturn(geoJson);
+
+        Set<Long> result = evaluator.findContainingGeofenceIds(8L, 121.0, 31.0);
+
+        assertTrue(result.isEmpty());
+        verify(cache, never()).getGeomGeoJson(1L);
+    }
+
+    @Test
     void findContainingGeofenceIds_pointInsideNone_returnsEmpty() {
         String geoJson = squareGeoJson(121.0, 31.0, 0.01);
         when(cache.allIds()).thenReturn(Set.of(1L));

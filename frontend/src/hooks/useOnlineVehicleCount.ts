@@ -5,12 +5,13 @@ import { realtimeApi } from '../api/realtime';
 import type { VehicleUpdateData } from '../types';
 
 const WS_URL = '/ws';
+const SNAPSHOT_REFRESH_MS = 30_000;
 
 /**
  * 订阅 /topic/vehicles 维护一个 online vehicleId Set
  * - 启动时 GET /api/vehicles/snapshot 拿基线
- * - 每次推送把集合里所有 vehicleId 都标为在线
- * - 5 分钟没收到该车推送 → 移出集合（兜底；正常情况后端 redis TTL 10s 会让车掉出 online 集合）
+ * - 推送 status=1 时加入，非在线状态时移除
+ * - 每 30 秒用 snapshot 覆盖校准，避免后端清理 Redis 在线集合后前端计数滞留
  */
 export function useOnlineVehicleCount(): number {
   const [online, setOnline] = useState<Set<number>>(new Set());
@@ -18,11 +19,17 @@ export function useOnlineVehicleCount(): number {
   useEffect(() => {
     let mounted = true;
     let client: Client | null = null;
+    let refreshTimer: number | null = null;
 
-    realtimeApi.snapshot().then((list) => {
-      if (!mounted) return;
-      setOnline(new Set(list.map((v) => v.vehicleId)));
-    }).catch(() => {});
+    const refreshSnapshot = () => {
+      realtimeApi.snapshot().then((list) => {
+        if (!mounted) return;
+        setOnline(new Set(list.map((v) => v.vehicleId)));
+      }).catch(() => {});
+    };
+
+    refreshSnapshot();
+    refreshTimer = window.setInterval(refreshSnapshot, SNAPSHOT_REFRESH_MS);
 
     const token = localStorage.getItem('token');
     const url = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
@@ -42,6 +49,7 @@ export function useOnlineVehicleCount(): number {
               const next = new Set(prev);
               for (const v of env.vehicles) {
                 if (v.status === 1) next.add(v.vehicleId);
+                else next.delete(v.vehicleId);
               }
               return next;
             });
@@ -53,6 +61,7 @@ export function useOnlineVehicleCount(): number {
 
     return () => {
       mounted = false;
+      if (refreshTimer !== null) window.clearInterval(refreshTimer);
       client?.deactivate();
     };
   }, []);
