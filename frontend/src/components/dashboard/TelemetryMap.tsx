@@ -13,6 +13,7 @@ type AMapMap = {
   getZoom: () => number;
   getContainer: () => HTMLDivElement;
   destroy: () => void;
+  resize?: () => void;
   on: (event: string, handler: (...args: unknown[]) => void) => void;
 };
 
@@ -73,6 +74,17 @@ export function TelemetryMap({
     setIsReady(true);
     onMapReadyRef.current?.(map);
 
+    // AMap captures the container size at init time. After layout settles
+    // (parent flex column resolves, card height becomes final), the map
+    // must be told to refit or it stays at the initial (often 0) size.
+    requestAnimationFrame(() => {
+      try { map.resize?.(); } catch {}
+    });
+    const ro = new ResizeObserver(() => {
+      try { map.resize?.(); } catch {}
+    });
+    ro.observe(containerRef.current);
+
     const onZoomChange = () => {
       const z = map.getZoom();
       const pct = Math.round(((z - 3) / (20 - 3)) * 100 + 20);
@@ -82,6 +94,7 @@ export function TelemetryMap({
     onZoomChange();
 
     return () => {
+      ro.disconnect();
       map.destroy();
       mapRef.current = null;
       markersRef.current.clear();
