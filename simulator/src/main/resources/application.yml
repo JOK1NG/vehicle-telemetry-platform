@@ -32,7 +32,7 @@ simulator:
   vehicle-ids: ${SIMULATOR_VEHICLE_IDS:}
 
   # 当 vehicle-ids 为空时，按此数量自动生成 1..count 的 ID。
-  vehicle-count: ${SIMULATOR_VEHICLE_COUNT:5}
+  vehicle-count: ${SIMULATOR_VEHICLE_COUNT:10}
 
   # GCJ-02 基础中心（上海人民广场附近）
   base-center-lng: ${SIMULATOR_BASE_CENTER_LNG:121.473701}

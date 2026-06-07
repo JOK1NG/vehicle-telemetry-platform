@@ -4,6 +4,9 @@ import { AppLayout } from './components/layout/AppLayout';
 import { LoginView } from './components/login/LoginView';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { VehicleListView } from './components/vehicles/VehicleListView';
+import { AlertsView } from './components/alerts/AlertsView';
+import { TrajectoryPlaybackView } from './components/trajectory/TrajectoryPlaybackView';
+import { GeofenceListView } from './components/geofence/GeofenceListView';
 import { ToastContainer } from './components/common/Toast';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -43,6 +46,9 @@ export default function App() {
         >
           <Route path="/vehicles" element={<VehicleListView />} />
           <Route path="/dashboard" element={<DashboardView />} />
+          <Route path="/alerts" element={<AlertsView />} />
+          <Route path="/trajectory" element={<TrajectoryPlaybackView />} />
+          <Route path="/geofences" element={<GeofenceListView />} />
         </Route>
         <Route path="*" element={<Navigate to="/vehicles" replace />} />
       </Routes>

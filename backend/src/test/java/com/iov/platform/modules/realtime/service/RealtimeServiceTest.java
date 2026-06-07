@@ -1,6 +1,7 @@
 package com.iov.platform.modules.realtime.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.iov.platform.modules.alert.service.AlertEngine;
 import com.iov.platform.modules.realtime.dto.VehicleUpdateMessage;
 import com.iov.platform.modules.vehicle.entity.Vehicle;
 import com.iov.platform.modules.vehicle.mapper.VehicleMapper;
@@ -33,6 +34,7 @@ class RealtimeServiceTest {
     private SimpMessagingTemplate messagingTemplate;
     private ObjectMapper objectMapper;
     private VehicleMapper vehicleMapper;
+    private AlertEngine alertEngine;
     private RealtimeService service;
 
     @BeforeEach
@@ -42,6 +44,7 @@ class RealtimeServiceTest {
         messagingTemplate = mock(SimpMessagingTemplate.class);
         objectMapper = new ObjectMapper();
         vehicleMapper = mock(VehicleMapper.class);
+        alertEngine = mock(AlertEngine.class);
 
         // Mock Redis operations
         HashOperations<String, Object, Object> hashOps = mock(HashOperations.class);
@@ -52,7 +55,7 @@ class RealtimeServiceTest {
         when(redis.opsForSet()).thenReturn(setOps);
         when(redis.opsForValue()).thenReturn(valOps);
 
-        service = new RealtimeService(redis, jdbc, messagingTemplate, objectMapper, vehicleMapper);
+        service = new RealtimeService(redis, jdbc, messagingTemplate, objectMapper, vehicleMapper, alertEngine);
     }
 
     // ===== extractVehicleId =====
@@ -250,6 +253,160 @@ class RealtimeServiceTest {
                 Map.of(MqttHeaders.RECEIVED_TOPIC, "vehicle/1/telemetry"));
         service.handleTelemetry(msg);
         verify(jdbc, never()).update(anyString(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    // ===== isValidTelemetry 边界校验 =====
+
+    @Test
+    void isValidTelemetry_validFields_returnsTrue() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(121.0);
+        tm.setLat(31.0);
+        tm.setSpeed(50.0);
+        tm.setHeading(180.0);
+        tm.setBattery(78.0);
+
+        assertTrue((Boolean) m.invoke(service, tm, 1L));
+    }
+
+    @Test
+    void isValidTelemetry_lngTooLow_returnsFalse() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(-181.0);
+        tm.setLat(31.0);
+
+        assertFalse((Boolean) m.invoke(service, tm, 1L));
+    }
+
+    @Test
+    void isValidTelemetry_lngTooHigh_returnsFalse() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(181.0);
+        tm.setLat(31.0);
+
+        assertFalse((Boolean) m.invoke(service, tm, 1L));
+    }
+
+    @Test
+    void isValidTelemetry_latTooLow_returnsFalse() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(121.0);
+        tm.setLat(-91.0);
+
+        assertFalse((Boolean) m.invoke(service, tm, 1L));
+    }
+
+    @Test
+    void isValidTelemetry_latTooHigh_returnsFalse() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(121.0);
+        tm.setLat(91.0);
+
+        assertFalse((Boolean) m.invoke(service, tm, 1L));
+    }
+
+    @Test
+    void isValidTelemetry_negativeSpeed_returnsFalse() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(121.0);
+        tm.setLat(31.0);
+        tm.setSpeed(-1.0);
+
+        assertFalse((Boolean) m.invoke(service, tm, 1L));
+    }
+
+    @Test
+    void isValidTelemetry_batteryNegative_returnsFalse() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(121.0);
+        tm.setLat(31.0);
+        tm.setBattery(-1.0);
+
+        assertFalse((Boolean) m.invoke(service, tm, 1L));
+    }
+
+    @Test
+    void isValidTelemetry_batteryOver100_returnsFalse() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(121.0);
+        tm.setLat(31.0);
+        tm.setBattery(101.0);
+
+        assertFalse((Boolean) m.invoke(service, tm, 1L));
+    }
+
+    @Test
+    void isValidTelemetry_headingNegative_returnsFalse() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(121.0);
+        tm.setLat(31.0);
+        tm.setHeading(-1.0);
+
+        assertFalse((Boolean) m.invoke(service, tm, 1L));
+    }
+
+    @Test
+    void isValidTelemetry_headingOver360_returnsFalse() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(121.0);
+        tm.setLat(31.0);
+        tm.setHeading(361.0);
+
+        assertFalse((Boolean) m.invoke(service, tm, 1L));
+    }
+
+    @Test
+    void isValidTelemetry_nullOptionalFields_returnsTrue() throws Exception {
+        Method m = RealtimeService.class.getDeclaredMethod("isValidTelemetry",
+                com.iov.platform.modules.realtime.dto.TelemetryMessage.class, Long.class);
+        m.setAccessible(true);
+
+        com.iov.platform.modules.realtime.dto.TelemetryMessage tm = new com.iov.platform.modules.realtime.dto.TelemetryMessage();
+        tm.setLng(121.0);
+        tm.setLat(31.0);
+        // speed/heading/battery 均为 null
+
+        assertTrue((Boolean) m.invoke(service, tm, 1L));
     }
 
     // ===== cleanStaleOnlineSet =====

@@ -1,5 +1,7 @@
 package com.iov.platform.config;
 
+import jakarta.servlet.DispatcherType;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -18,6 +20,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -35,6 +38,9 @@ import java.util.List;
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
+
+    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:5174,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:3000}")
+    private String allowedOrigins;
 
     /**
      * 密码编码器：BCrypt
@@ -55,15 +61,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // 安全修复：不再使用 * + allowCredentials，改为明确的开发域名
-        configuration.setAllowedOrigins(List.of(
-                "http://localhost:5173",
-                "http://localhost:5174",
-                "http://localhost:3000",
-                "http://127.0.0.1:5173",
-                "http://127.0.0.1:5174",
-                "http://127.0.0.1:3000"
-        ));
+        configuration.setAllowedOrigins(parseAllowedOrigins());
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
@@ -84,8 +82,15 @@ public class SecurityConfig {
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
 
             .authorizeHttpRequests(auth -> auth
+                // MVC async/SSE completion dispatches should not be re-authorized after response commit.
+                .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                 // 认证接口无需认证
                 .requestMatchers("/api/auth/login").permitAll()
+                // TODO: Phase 0 only - require authentication before production rollout.
+                // AI 健康探测无需认证，ping 测试需要认证
+                .requestMatchers(HttpMethod.GET, "/api/ai/health").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/ai/ping").authenticated()
+
                 // 健康检查
                 .requestMatchers("/health").permitAll()
                 // Actuator：仅暴露 health（不含 details）和 info
@@ -125,5 +130,12 @@ public class SecurityConfig {
             );
 
         return http.build();
+    }
+
+    private List<String> parseAllowedOrigins() {
+        return Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList();
     }
 }

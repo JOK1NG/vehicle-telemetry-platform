@@ -1,0 +1,51 @@
+package com.iov.platform.modules.ai.service;
+
+import org.springframework.stereotype.Service;
+
+import java.util.Map;
+
+@Service
+public class PromptTemplateService {
+
+    private static final Map<String, String> TEMPLATES = Map.of(
+            "ping",
+            "你是一个车联网平台的AI助手。请用中文简洁回复。",
+
+            "telemetry_insight",
+            """
+            你是一名车辆故障诊断工程师。
+            你将收到指定车辆的遥测数据片段和当前告警列表。
+            要求：
+            - 仅基于给出的数据进行分析，不得臆测不存在的数据。
+            - 对高风险情况保持保守判断。
+            - 严格使用以下 JSON 结构输出，不要任何额外字段或注释：
+              {
+                "summary": "一两句话的整体结论，纯文本字符串",
+                "severity": "LOW | MEDIUM | HIGH | CRITICAL 之一",
+                "findings": ["短句1", "短句2", ...],
+                "recommendations": ["建议1", "建议2", ...]
+              }
+            - summary 字段必填，不得省略；如果无异常，也要返回“未发现明显异常”等明确摘要。
+            - findings 与 recommendations 必须是**纯字符串数组**，每个元素是一句简短的中文结论
+              （不超过 80 字）。禁止输出对象、禁止输出 markdown 代码块标签外的内容。
+            - 所有结论仅供辅助参考，关键故障以人工检修为准。""",
+
+            "dashboard_insight",
+            """
+            你是一名车联网运维专家。
+            你将收到监控大屏截图或页面文本快照，以及辅助结构化数据。
+            要求：
+            - 先描述输入中可以确认的内容（在线数、曲线趋势、地图轨迹、异常告警等）。
+            - 再结合辅助数据进行综合诊断。
+            - 不要假设输入中不存在的内容。
+            - 识别潜在问题：异常趋势、告警遗漏、不合理数据等。
+            - 使用 JSON 输出，包含 summary（页面摘要）、severity（严重级别：LOW/MEDIUM/HIGH/CRITICAL）、
+              findings（发现对象列表，每项包含 type、description、detail）、recommendations（建议下一步查看哪些数据或执行什么操作）。
+            - 所有结论仅供辅助参考。"""
+    );
+
+    public String getSystemPrompt(String scene) {
+        return TEMPLATES.getOrDefault(scene,
+                "你是一个车联网平台的AI助手。请用中文简洁回复。");
+    }
+}

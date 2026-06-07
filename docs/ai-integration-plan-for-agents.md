@@ -31,32 +31,34 @@ AI 接入不应作为一个孤立聊天框存在，而应作为系统内生能�
 \`\`\`text
 com.iov.platform.modules.ai
 ├── controller
-│   ├── AiInsightController
-│   ├── AiDiagnosisController
-│   ├── AiInspectionController
-│   └── AiOpsController
+│   ├── AiHealthController      ← 配置探测（GET /api/ai/health）
+│   ├── AiPingController          ← 最小测试（POST /api/ai/ping，需认证）
+│   └── AiInsightController       ← 遥测诊断 + 大屏解读
 ├── service
-│   ├── ChatOrchestratorService
-│   ├── MultimodalAnalysisService
-│   ├── TelemetryInsightService
-│   ├── FaultDiagnosisService
-│   ├── VehicleInspectionService
-│   ├── DrivingCoachService
-│   └── PromptTemplateService
+│   ├── AiChatGateway             ← 模型调用抽象接口
+│   ├── SpringAiChatGateway       ← Spring AI OpenAI-compatible 实现
+│   ├── TelemetryInsightService   ← 遥测文本诊断（流式/非流式）
+│   ├── DashboardInsightService   ← 大屏截图 + 多模态/文本分析
+│   ├── DashboardScreenshotService← Playwright 截图服务
+│   ├── PromptTemplateService     ← 场景化 prompt 模板
+│   └── AiCallLogService          ← 调用日志持久化
 ├── dto
-│   ├── AiAnalysisRequest
-│   ├── DashboardInsightRequest
-│   ├── FaultPhotoDiagnosisRequest
-│   ├── InspectionRequest
-│   └── AiAnalysisResponse
-├── domain
-│   ├── AiTask
-│   ├── AiReport
-│   ├── AiAttachment
-│   └── AiPromptProfile
-└── config
-    ├── SpringAiConfig
-    └── AiProperties
+│   ├── TelemetryInsightRequest / Response
+│   ├── TelemetryInsightStreamEvent
+│   ├── DashboardInsightRequest / Response
+│   ├── PingRequest / Response
+│   └── DashboardInsightResponse.Timing
+├── entity
+│   ├── AiCallLog
+│   └── AiTask
+├── mapper
+│   ├── AiCallLogMapper
+│   └── AiTaskMapper
+├── config
+│   ├── AiChatProperties
+│   └── SpringAiChatConfiguration
+└── service
+    └── AiJsonUtils               ← JSON 截断/围栏提取工具
 \`\`\`
 
 该模块只负责：接收 AI 相关请求、统一封装模型调用、与其他业务模块协作获取上下文、输出自然语言结果与结构化结果、记录 AI 调用日志、成本、审计信息。
@@ -81,7 +83,7 @@ public interface MultimodalModelClient {
 - **OpenAI 多模态**：能力成熟，适合对比验证。
 - **Ollama / 本地多模态模型**：适合隐私敏感和开发环境，但精度与稳定性需评估。
 
-建议实现三种 Provider：`QwenMultimodalClient`、`OpenAiMultimodalClient`、`LocalVlmClient`，由配置切换当前默认模型。
+实际实现：通过 `SpringAiChatGateway` 统一封装 `OpenAiChatModel`，利用 OpenAI-compatible 协议接入 StepFun / Qwen 等 Provider。配置通过 `AiChatProperties` 集中管理，切换 Provider 只需修改 `AI_CHAT_BASE_URL` 与 `AI_CHAT_MODEL`。
 
 ## 分阶段实施计划
 
@@ -94,8 +96,9 @@ public interface MultimodalModelClient {
 1. 引入 Spring AI 相关依赖（BOM + starter）。
 2. 建立 `modules.ai` 模块。
 3. 完成统一模型配置。
-4. 增加 AI 调用日志表。
-5. 提供一个最小测试接口：`POST /api/ai/ping`。
+4. 增加 AI 调用日志表 `ai_call_log` 与异步任务表 `ai_task`。
+5. 提供配置探测接口：`GET /api/ai/health`（无需认证，不消耗 API 配额）。
+6. 提供最小测试接口：`POST /api/ai/ping`（**需认证**，仅用于带 token 的连通性验证）。
 
 **建议新增表**：
 
@@ -115,7 +118,11 @@ create table ai_call_log (
 );
 \`\`\`
 
-**验收标准**：可以成功通过后端调用模型返回文本；可以记录调用日志；不影响现有 MQTT / WS / realtime 流程。
+**验收标准**：
+- `GET /api/ai/health` 可匿名访问，返回配置状态（`UP`/`DOWN`）。
+- `POST /api/ai/ping` 需携带有效 Bearer token，调用模型并返回文本。
+- 所有模型调用均记录到 `ai_call_log`。
+- 不影响现有 MQTT / WS / realtime 流程。
 
 ---
 
@@ -579,15 +586,15 @@ AI 接入后必须考虑成本与性能。
 ## 对后续 Agent 的具体执行指令
 
 1. 先核对当前本地仓库结构与本文是否一致，尤其是包名、模块名、配置文件路径。
-2. 先完成 `modules.ai` 基础设施，不要直接跳入复杂场景。
-3. 第一阶段只做一个 Provider，建议先接 Qwen 多模态。
-4. 第一批上线场景建议只选两个：`telemetry insight` 和 `dashboard multimodal insight`。
+2. `modules.ai` 基础设施已完成，不要重复造轮子；新增场景复用现有 `AiChatGateway` 和 `PromptTemplateService`。
+3. 模型接入走统一 `SpringAiChatGateway`，通过 `application.yml` 的 `ai.chat.*` 配置切换 Provider，**不**需要为每个 Provider 写独立 Client。
+4. 第一批上线场景已实现：`telemetry insight`（流式 SSE + 非流式）和 `dashboard multimodal insight`（截图 + 图片/文本回退）。
 5. 所有 AI 接口统一走 DTO，不允许在 Controller 中直接拼 prompt。
-6. 所有模型调用都必须落日志。
-7. 所有高风险诊断类结果必须带免责声明。
-8. 图片上传相关逻辑与 AI 调用解耦，优先抽象文件服务。
-9. 所有输出给前端的 AI 结果都要保留结构化字段，不能只返回一段长文本。
-10. 预留缓存与异步任务能力，避免未来返工。
+6. 所有模型调用都必须落日志到 `ai_call_log`。
+7. 所有高风险诊断类结果必须带免责声明（已在 prompt 中注入）。
+8. Dashboard 截图由后端 Playwright 完成，**不**依赖前端截图上传；前端可提供 base64 图片作为可选输入。
+9. 所有输出给前端的 AI 结果都要保留结构化字段（`summary`/`severity`/`findings`/`recommendations`/`latencyMs`）。
+10. 新增 AI 接口时同步补充 `GET /api/ai/health` 探测能力（若需要运维感知），并确保敏感端点（如 `ping`）走认证而非 `permitAll`。
 
 ---
 

@@ -31,9 +31,17 @@ request.interceptors.response.use(
     return res;
   },
   (error: unknown) => {
-    const err = error as { response?: { status?: number; data?: { message?: string } } };
+    const err = error as {
+      code?: string;
+      message?: string;
+      response?: { status?: number; data?: { message?: string } };
+    };
     const status = err.response?.status;
-    const msg = err.response?.data?.message || '网络错误';
+    const msg =
+      err.response?.data?.message ||
+      (err.code === 'ECONNABORTED' ? '请求超时，请稍后重试' : undefined) ||
+      (err.message === 'Network Error' ? '网络错误' : err.message) ||
+      '网络错误';
 
     if (status === 401) {
       useAuthStore.getState().logout();

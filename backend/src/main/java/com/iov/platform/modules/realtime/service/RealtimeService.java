@@ -2,6 +2,7 @@ package com.iov.platform.modules.realtime.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.iov.platform.modules.alert.service.AlertEngine;
 import com.iov.platform.modules.realtime.dto.TelemetryMessage;
 import com.iov.platform.modules.realtime.dto.VehicleUpdateMessage;
 import com.iov.platform.modules.vehicle.entity.Vehicle;
@@ -35,6 +36,7 @@ public class RealtimeService {
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
     private final VehicleMapper vehicleMapper;
+    private final AlertEngine alertEngine;
 
     /** 500ms 节流缓冲区。使用 ConcurrentHashMap 保证线程安全，swap 引用避免与 flush 竞态 */
     private volatile Map<Long, VehicleUpdateMessage> buffer = new ConcurrentHashMap<>();
@@ -53,12 +55,14 @@ public class RealtimeService {
                            JdbcTemplate jdbcTemplate,
                            SimpMessagingTemplate messagingTemplate,
                            ObjectMapper objectMapper,
-                           VehicleMapper vehicleMapper) {
+                           VehicleMapper vehicleMapper,
+                           AlertEngine alertEngine) {
         this.redis = redis;
         this.jdbcTemplate = jdbcTemplate;
         this.messagingTemplate = messagingTemplate;
         this.objectMapper = objectMapper;
         this.vehicleMapper = vehicleMapper;
+        this.alertEngine = alertEngine;
 
         // 每 500ms flush 缓冲区 (swap 模式，ConcurrentHashMap 保证线程安全)
         scheduler.scheduleAtFixedRate(this::flushBuffer, 500, 500, TimeUnit.MILLISECONDS);
@@ -174,13 +178,22 @@ public class RealtimeService {
         }
 
         // 5. 放入节流缓冲区
+        double finalSpeed = tm.getSpeed() != null ? tm.getSpeed() : 0;
+        double finalBattery = tm.getBattery() != null ? tm.getBattery() : 0;
         buffer.put(vehicleId, new VehicleUpdateMessage(
                 vehicleId, plateNo, tm.getLng(), tm.getLat(),
-                tm.getSpeed() != null ? tm.getSpeed() : 0,
+                finalSpeed,
                 tm.getHeading() != null ? tm.getHeading() : 0,
-                tm.getBattery() != null ? tm.getBattery() : 0,
+                finalBattery,
                 status
         ));
+
+        // 6. 触发告警检测（超速/低电/围栏进出）
+        try {
+            alertEngine.evaluateTelemetry(vehicleId, tm.getLng(), tm.getLat(), finalSpeed, finalBattery, status);
+        } catch (Exception e) {
+            log.warn("告警检测异常 vehicleId={}: {}", vehicleId, e.getMessage());
+        }
 
         log.debug("收到遥测 vehicleId={} speed={} battery={}", vehicleId, tm.getSpeed(), tm.getBattery());
     }

@@ -16,7 +16,9 @@
 | Maven | **3.9+**（wrapper 锁定） | 设计文档指定 Maven 多模块 |
 | Flyway | **随 spring-boot-starter 引入** | DB 迁移工具，比 Liquibase 轻量，MVP 够用 |
 | MyBatis-Plus | **3.5.7** | 与 Spring Boot 3.5 兼容的最新稳定版 |
-| JWT | **jjwt 0.12.6** | 签发与校验 |
+| Spring AI | **1.0.0-M6** | OpenAI-compatible SDK，统一封装 Qwen / StepFun 等 Provider |
+| Playwright | **1.52.0** | 后端 Dashboard 截图，供多模态模型视觉分析 |
+| JWT | **jjwt 0.12.6** | 签发与校验；`JWT_SECRET` 必须配置，无回退默认值 |
 
 ### 1.2 前端
 
@@ -50,6 +52,7 @@
 - `CREATE EXTENSION postgis;` 和 `CREATE EXTENSION timescaledb;` 由 Docker 初始化脚本 `docker/init-db/01-init-extensions.sql` 执行
 - TimescaleDB 的 `create_hypertable` 在 V1 迁移脚本中执行（含 `if_not_exists => true` 保证幂等）
 - 初始用户数据（ADMIN/VIEWER）也在迁移脚本中插入
+- V5 新增 `ai_call_log` / `ai_task` 表，供 AI 调用日志与异步任务追踪
 
 ---
 
@@ -256,16 +259,17 @@ VITE_AMAP_SECURITY_JS_CODE=你的安全密钥
 
 ### ✅ 已确认
 
-1. JDK 17 + Spring Boot 3.5.14 + Maven 3.9+
+1. JDK 17 + Spring Boot 3.5.14 + Maven 3.9+，后端端口 **8081**
 2. 前端 React 18 + TypeScript + Zustand + Tailwind CSS 4
 3. TimescaleDB-HA（含 PostGIS）而非纯 TimescaleDB
-4. Flyway 做 DB 迁移（V1 建表、V2 初始用户、V3 修正密码哈希、V4 种子车辆）
+4. Flyway 做 DB 迁移（V1~V4 核心表 + V5 AI 基础设施）
 5. MQTT topic 用自增 vehicleId（MVP 简化）
 6. 全链路 GCJ-02 坐标系，模拟器源头生成
 7. RBAC 两个角色：ADMIN / VIEWER
 8. WebSocket `/topic/vehicles` 用 500ms 节流广播
 9. `/api/vehicles/snapshot` 快照接口（Cache-Aside + Multi-Get Redis 缓存优化）
-10. JWT 校验：`sub`=userId, `username`, `role`（jjwt 0.12.6）
+10. JWT 校验：`sub`=userId, `username`, `role`（jjwt 0.12.6），**`JWT_SECRET` 必须配置，无回退默认值**
+11. AI 模块（`modules.ai`）已落地：Spring AI + Playwright，支持 telemetry insight（流式/非流式）与 dashboard multimodal insight
 
 ### ❌ 不在 MVP 范围
 

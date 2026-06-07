@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { realtimeApi } from '../../api/realtime';
 import { useVehicleSocket } from '../../hooks/useVehicleSocket';
 import type { VehicleSnapshot, VehicleUpdateData } from '../../types';
@@ -16,9 +17,13 @@ import {
 } from '../common/Icons';
 import { cx, fmtNum, fmtTime } from '../common/utils';
 import { TelemetryMap, focusMapOnVehicle } from './TelemetryMap';
+import { AiInsightPanel } from './AiInsightPanel';
 import { RealtimeList } from './RealtimeList';
+import { AlertDetailDialog } from '../alerts/AlertList';
+import { useAlertsStore } from '../../stores/alerts';
 
 export function DashboardView() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [realtimeMap, setRealtimeMap] = useState<Map<number, VehicleUpdateData & { lastTs: number }>>(
     new Map()
   );
@@ -26,6 +31,30 @@ export function DashboardView() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const mapRef = useRef<Parameters<typeof focusMapOnVehicle>[0]>(null);
+
+  // 路由参数：?focusVehicleId= &alertId= 触发高亮 + 弹告警详情
+  const focusVehicleId = searchParams.get('focusVehicleId');
+  const alertId = searchParams.get('alertId');
+  const focusAlert = useAlertsStore((s) =>
+    alertId ? s.items.find((a) => a.id === Number(alertId)) ?? null : null
+  );
+  useEffect(() => {
+    if (focusVehicleId) {
+      const id = Number(focusVehicleId);
+      setSelectedId(id);
+      // 等 realtimeList 拿到坐标后再 flyTo
+      const v = realtimeMap.get(id);
+      if (v && mapRef.current) {
+        focusMapOnVehicle(mapRef.current, v.lng, v.lat);
+      }
+    }
+  }, [focusVehicleId, realtimeMap]);
+  const clearFocus = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('focusVehicleId');
+    next.delete('alertId');
+    setSearchParams(next, { replace: true });
+  };
 
   const handleEnvelope = (vehicles: VehicleUpdateData[], ts?: string) => {
     setRealtimeMap((prev) => {
@@ -93,7 +122,7 @@ export function DashboardView() {
   };
 
   return (
-    <div className="view-in space-y-4">
+    <div className="view-in space-y-4 h-full xl:flex xl:flex-col">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight">监控大屏</h1>
@@ -163,11 +192,15 @@ export function DashboardView() {
         />
       </div>
 
-      {/* aspect-[5/3] on the wrapper sets the row height from the map's anchor.
-          The inner grid fills it; the list is stretched to the same height and
-          scrolls internally with the fade + arrow indicator. */}
-      <div className="aspect-[5/3] w-full">
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] gap-3 h-full">
+      {/* Single-column mode (below xl): aspect-[5/3] on the wrapper sets the
+          row height. grid-rows-[1fr_1fr] splits it 50/50 so neither card
+          collapses. Two-column mode (xl+): the page is a flex column, so
+          xl:flex-1 on the wrapper makes the map+list row eat the remaining
+          viewport space and adapt to any screen height. The grid's
+          xl:grid-rows-[1fr] keeps both cards the same height filling the
+          wrapper (the list scrolls internally when its content overflows). */}
+      <div className="aspect-[5/3] w-full xl:aspect-auto xl:flex-1 xl:min-h-[300px]">
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_360px] grid-rows-[minmax(0,1fr)_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)] gap-3 h-full">
           <TelemetryMap
             realtime={realtimeList}
             selectedId={selectedId}
@@ -183,6 +216,14 @@ export function DashboardView() {
           />
         </div>
       </div>
+
+      <AiInsightPanel
+        onlineCount={online.length}
+        avgSpeed={avgSpeed}
+        avgBattery={avgBattery}
+      />
+
+      {focusAlert && <AlertDetailDialog alert={focusAlert} onClose={clearFocus} />}
     </div>
   );
 }

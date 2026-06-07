@@ -7,7 +7,11 @@ import {
   VehiclesIcon,
   LogoutIcon,
   SparkleIcon,
+  BellIcon,
+  RouteIcon,
+  FenceIcon,
 } from '../common/Icons';
+import { useAlertsStore } from '../../stores/alerts';
 import { cx } from '../common/utils';
 
 function NavItem({
@@ -69,6 +73,13 @@ export function Sidebar({ vehicleCount }: { vehicleCount: number }) {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const lastSeenAt = useAlertsStore((s) => s.lastSeenAt);
+  const alerts = useAlertsStore((s) => s.items);
+  const unread = (() => {
+    if (!lastSeenAt) return alerts.filter((a) => !a.handled).length;
+    const since = new Date(lastSeenAt).getTime();
+    return alerts.filter((a) => !a.handled && new Date(a.occurredAt).getTime() > since).length;
+  })();
 
   if (!user) return null;
 
@@ -102,6 +113,9 @@ export function Sidebar({ vehicleCount }: { vehicleCount: number }) {
           label="车辆列表"
           badge={vehicleCount}
         />
+        <NavItem to="/alerts" icon={<BellIcon className="w-4 h-4" />} label="告警中心" badge={unread || undefined} />
+        <NavItem to="/trajectory" icon={<RouteIcon className="w-4 h-4" />} label="轨迹回放" />
+        <NavItem to="/geofences" icon={<FenceIcon className="w-4 h-4" />} label="地理围栏" />
       </nav>
 
       <div className="px-2.5 py-2 mt-1">

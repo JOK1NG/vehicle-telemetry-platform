@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8081
 
 spring:
   application:
@@ -12,14 +12,38 @@ spring:
     global-config:
       db-config:
         id-type: auto
-        # 注意：vehicle 表和 Vehicle 实体均无 deleted 字段及 @TableLogic 注解
-        # 此配置仅用于未来逻辑删除扩展，当前不影响功能
         logic-delete-field: deleted
         logic-delete-value: 1
         logic-not-delete-value: 0
 
-# Actuator 暴露健康检查
-# 安全修复（MUL-39）：仅暴露 health 和 info，health details 仅对认证用户可见
+ai:
+  # Spring AI OpenAI-compatible chat gateway.
+  # AI_DASHBOARD_* / AI_QWEN_* are kept as fallback env names for existing local files.
+  chat:
+    provider: ${AI_CHAT_PROVIDER:${AI_DASHBOARD_PROVIDER:stepfun}}
+    api-key: ${AI_CHAT_API_KEY:${AI_DASHBOARD_API_KEY:${AI_QWEN_API_KEY:dummy_key_for_local_dev}}}
+    base-url: ${AI_CHAT_BASE_URL:${AI_DASHBOARD_BASE_URL:${AI_QWEN_BASE_URL:https://api.stepfun.com/step_plan}}}
+    completions-path: ${AI_CHAT_COMPLETIONS_PATH:${AI_DASHBOARD_COMPLETIONS_PATH:/v1/chat/completions}}
+    model: ${AI_CHAT_MODEL:${AI_DASHBOARD_MODEL:step-3.7-flash}}
+    temperature: ${AI_CHAT_TEMPERATURE:${AI_DASHBOARD_TEMPERATURE:0.2}}
+    max-tokens: ${AI_CHAT_MAX_TOKENS:${AI_DASHBOARD_MAX_TOKENS:2400}}
+    response-format: ${AI_CHAT_RESPONSE_FORMAT:${AI_DASHBOARD_RESPONSE_FORMAT:json_object}}
+    reasoning-effort: ${AI_CHAT_REASONING_EFFORT:${AI_DASHBOARD_REASONING_EFFORT:}}
+    stream-usage: ${AI_CHAT_STREAM_USAGE:false}
+  dashboard-insight:
+    image-mode: ${AI_DASHBOARD_IMAGE_MODE:auto}
+  dashboard-screenshot:
+    frontend-base-url: ${AI_DASHBOARD_FRONTEND_BASE_URL:http://localhost:5173}
+    chrome-executable-path: ${AI_DASHBOARD_CHROME_PATH:/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
+    timeout-ms: ${AI_DASHBOARD_SCREENSHOT_TIMEOUT_MS:15000}
+    wait-after-load-ms: ${AI_DASHBOARD_SCREENSHOT_WAIT_AFTER_LOAD_MS:1500}
+    viewport-width: ${AI_DASHBOARD_SCREENSHOT_WIDTH:1280}
+    viewport-height: ${AI_DASHBOARD_SCREENSHOT_HEIGHT:720}
+
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:3000}
+
 management:
   endpoints:
     web:
@@ -29,14 +53,11 @@ management:
     health:
       show-details: when-authorized
 
-# 日志
 logging:
   level:
     com.iov.platform: DEBUG
     org.springframework.security: INFO
 
-# JWT 默认配置（可被 profile 覆盖）
-# 警告：生产环境务必修改 JWT_SECRET 和所有默认密码
 jwt:
-  secret: ${JWT_SECRET:change_me_jwt_secret_please_use_long_random_string}
+  secret: ${JWT_SECRET}
   expiration: ${JWT_EXPIRATION:86400000}

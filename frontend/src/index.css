@@ -225,6 +225,71 @@ body {
   animation: view-in 220ms ease-out both;
 }
 
+/* Modal backdrop: opacity + backdrop-filter grow together so the blur
+   fades in instead of popping on. No transform on the backdrop itself
+   to avoid breaking position: fixed. */
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+.modal-backdrop-in {
+  animation: modal-backdrop-in 220ms ease-out both;
+}
+
+/* Modal card: subtle scale + fade, transform lives only on the card
+   so it does not affect the backdrop's positioning. */
+@keyframes modal-card-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.modal-card-in {
+  animation: modal-card-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes modal-backdrop-out {
+  from {
+    opacity: 1;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  to {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+  }
+}
+.modal-backdrop-out {
+  animation: modal-backdrop-out 180ms ease-in both;
+}
+
+@keyframes modal-card-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+}
+.modal-card-out {
+  animation: modal-card-out 180ms ease-in both;
+}
+
 /* Subtle scrollbar */
 ::-webkit-scrollbar {
   width: 10px;
