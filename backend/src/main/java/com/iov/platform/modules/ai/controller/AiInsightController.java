@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @RequestMapping("/api/ai/insights")
 @RequiredArgsConstructor
 public class AiInsightController {
+    private static final long TELEMETRY_STREAM_TIMEOUT_MS = 120_000L;
 
     private final TelemetryInsightService telemetryInsightService;
     private final DashboardInsightService dashboardInsightService;
@@ -45,7 +46,7 @@ public class AiInsightController {
             @Valid @RequestBody TelemetryInsightRequest request,
             @AuthenticationPrincipal AuthUserDetails user) {
         Long userId = user != null ? user.getSysUser().getId() : null;
-        SseEmitter emitter = new SseEmitter(120_000L);
+        SseEmitter emitter = new SseEmitter(TELEMETRY_STREAM_TIMEOUT_MS);
         AtomicReference<Disposable> subscriptionRef = new AtomicReference<>();
         Disposable subscription = telemetryInsightService.streamAnalyze(request, userId)
                 .subscribe(
@@ -54,19 +55,17 @@ public class AiInsightController {
                                 sendTelemetryEvent(emitter, event);
                             } catch (RuntimeException e) {
                                 dispose(subscriptionRef.get());
-                                safeCompleteWithError(emitter, e);
+                                completeSilently(emitter);
                             }
                         },
                         error -> {
                             log.warn("Telemetry insight SSE failed: {}", error.getMessage());
                             try {
-                                sendTelemetryEvent(emitter, TelemetryInsightStreamEvent.error(
+                                sendErrorAndComplete(emitter,
                                         "AI 流式诊断失败：" + error.getMessage(),
-                                        0
-                                ));
-                                emitter.complete();
-                            } catch (Exception sendError) {
-                                safeCompleteWithError(emitter, sendError);
+                                        0);
+                            } catch (RuntimeException sendError) {
+                                completeSilently(emitter);
                             } finally {
                                 dispose(subscriptionRef.get());
                             }
@@ -84,14 +83,17 @@ public class AiInsightController {
         emitter.onTimeout(() -> {
             dispose(subscriptionRef.get());
             try {
-                emitter.complete();
-            } catch (Exception e) {
-                safeCompleteWithError(emitter, e);
+                sendErrorAndComplete(emitter,
+                        "AI 流式诊断超时（120 秒内未返回最终结果），请稍后重试。",
+                        TELEMETRY_STREAM_TIMEOUT_MS);
+            } catch (RuntimeException e) {
+                completeSilently(emitter);
             }
         });
         emitter.onError(error -> {
             dispose(subscriptionRef.get());
-            safeCompleteWithError(emitter, error);
+            log.debug("Telemetry insight SSE connection closed with error: {}", error.getMessage());
+            completeSilently(emitter);
         });
         return emitter;
     }
@@ -112,11 +114,16 @@ public class AiInsightController {
         }
     }
 
-    private void safeCompleteWithError(SseEmitter emitter, Throwable error) {
+    private void sendErrorAndComplete(SseEmitter emitter, String message, long elapsedMs) {
+        sendTelemetryEvent(emitter, TelemetryInsightStreamEvent.error(message, elapsedMs));
+        completeSilently(emitter);
+    }
+
+    private void completeSilently(SseEmitter emitter) {
         try {
-            emitter.completeWithError(error);
+            emitter.complete();
         } catch (Exception e) {
-            log.debug("Failed to complete SSE emitter with error: {}", e.getMessage());
+            log.debug("Failed to complete SSE emitter: {}", e.getMessage());
         }
     }
 

@@ -112,18 +112,25 @@ export const aiApi = {
       }
       const raw = dataLines.join('\n');
       dataLines = [];
+      let payload: TelemetryInsightStreamEvent;
       try {
-        const payload = JSON.parse(raw) as TelemetryInsightStreamEvent;
-        payload.type = payload.type || (eventName as TelemetryInsightStreamEvent['type']);
+        payload = JSON.parse(raw) as TelemetryInsightStreamEvent;
+      } catch (parseErr) {
+        const msg = parseErr instanceof Error ? parseErr.message : 'SSE 数据解析失败';
+        handlers.onError?.(msg);
+        eventName = 'message';
+        throw new Error(msg);
+      }
+
+      payload.type = payload.type || (eventName as TelemetryInsightStreamEvent['type']);
+      try {
         const maybeResult = dispatchStreamEvent(payload, handlers);
         if (maybeResult) {
           finalResult = maybeResult;
         }
-      } catch (parseErr) {
-        const msg = parseErr instanceof Error ? parseErr.message : 'SSE 数据解析失败';
-        handlers.onError?.(msg);
+      } finally {
+        eventName = 'message';
       }
-      eventName = 'message';
     };
 
     const consumeLine = (line: string) => {
