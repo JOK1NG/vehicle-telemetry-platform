@@ -73,11 +73,8 @@ public class SpringAiChatConfiguration {
             baseUrl = baseUrl.substring(0, baseUrl.length() - "/chat/completions".length());
             completionsPath = "/chat/completions";
         }
-        if (baseUrl.endsWith("/v1") && DEFAULT_COMPLETIONS_PATH.equals(completionsPath)) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - "/v1".length());
-            completionsPath = DEFAULT_COMPLETIONS_PATH;
-        }
-        if (baseUrl.endsWith("/v1") && "/chat/completions".equals(completionsPath)) {
+        if (baseUrl.endsWith("/v1")
+                && (DEFAULT_COMPLETIONS_PATH.equals(completionsPath) || "/chat/completions".equals(completionsPath))) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - "/v1".length());
             completionsPath = DEFAULT_COMPLETIONS_PATH;
         }

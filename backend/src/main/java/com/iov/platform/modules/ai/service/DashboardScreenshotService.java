@@ -47,6 +47,9 @@ public class DashboardScreenshotService {
     @Value("${ai.dashboard-screenshot.viewport-height:720}")
     private int viewportHeight;
 
+    @Value("${ai.dashboard-screenshot.wait-after-load-ms:1500}")
+    private double waitAfterLoadMs;
+
     public byte[] captureDashboardPng(String authorizationHeader, AuthUserDetails user) {
         DashboardPageSnapshot snapshot = captureDashboardSnapshot(authorizationHeader, user, true);
         if (snapshot.imageBytes() == null || snapshot.imageBytes().length == 0) {
@@ -85,7 +88,7 @@ public class DashboardScreenshotService {
                 page.setDefaultTimeout(timeoutMs);
                 navigateDashboard(page);
                 page.waitForSelector(".view-in");
-                page.waitForTimeout(1_500);
+                page.waitForTimeout(waitAfterLoadMs);
 
                 String visibleText = normalizeVisibleText(page.textContent("body"));
                 byte[] imageBytes = includeImage
@@ -169,7 +172,7 @@ public class DashboardScreenshotService {
     }
 
     private static String extractBearerToken(String authorizationHeader) {
-        if (!StringUtils.hasText(authorizationHeader)) return null;
+        if (!StringUtils.hasText(authorizationHeader)) return "";
         String prefix = "Bearer ";
         return authorizationHeader.startsWith(prefix)
                 ? authorizationHeader.substring(prefix.length()).trim()

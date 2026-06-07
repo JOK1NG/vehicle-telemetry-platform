@@ -2,6 +2,7 @@ package com.iov.platform.modules.ai.service;
 
 import com.iov.platform.modules.ai.config.AiChatProperties;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.ChatClient.ChatClientRequestSpec;
 import org.springframework.ai.chat.metadata.Usage;
@@ -16,6 +17,7 @@ import reactor.core.publisher.Flux;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SpringAiChatGateway implements AiChatGateway {
 
     private final ChatClient.Builder chatClientBuilder;
@@ -92,7 +94,12 @@ public class SpringAiChatGateway implements AiChatGateway {
 
     private ResponseFormat.Type responseFormatType(String raw) {
         String normalized = raw.trim().replace('-', '_').toUpperCase();
-        return ResponseFormat.Type.valueOf(normalized);
+        try {
+            return ResponseFormat.Type.valueOf(normalized);
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid AI response format '{}', defaulting to JSON_OBJECT", raw);
+            return ResponseFormat.Type.JSON_OBJECT;
+        }
     }
 
     private String effectiveModel(String model) {

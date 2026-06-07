@@ -36,8 +36,13 @@ ai:
     frontend-base-url: ${AI_DASHBOARD_FRONTEND_BASE_URL:http://localhost:5173}
     chrome-executable-path: ${AI_DASHBOARD_CHROME_PATH:/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
     timeout-ms: ${AI_DASHBOARD_SCREENSHOT_TIMEOUT_MS:15000}
+    wait-after-load-ms: ${AI_DASHBOARD_SCREENSHOT_WAIT_AFTER_LOAD_MS:1500}
     viewport-width: ${AI_DASHBOARD_SCREENSHOT_WIDTH:1280}
     viewport-height: ${AI_DASHBOARD_SCREENSHOT_HEIGHT:720}
+
+app:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:3000}
 
 management:
   endpoints:

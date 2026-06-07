@@ -20,6 +20,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.Disposable;
 
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Slf4j
 @RestController
@@ -45,9 +46,18 @@ public class AiInsightController {
             @AuthenticationPrincipal AuthUserDetails user) {
         Long userId = user != null ? user.getSysUser().getId() : null;
         SseEmitter emitter = new SseEmitter(120_000L);
+        AtomicReference<Disposable> subscriptionRef = new AtomicReference<>();
         Disposable subscription = telemetryInsightService.streamAnalyze(request, userId)
                 .subscribe(
-                        event -> sendTelemetryEvent(emitter, event),
+                        event -> {
+                            try {
+                                sendTelemetryEvent(emitter, event);
+                            } catch (RuntimeException e) {
+                                dispose(subscriptionRef.get());
+                                safeCompleteWithError(emitter, e);
+                                throw e;
+                            }
+                        },
                         error -> {
                             log.warn("Telemetry insight SSE failed: {}", error.getMessage());
                             try {
@@ -57,17 +67,33 @@ public class AiInsightController {
                                 ));
                                 emitter.complete();
                             } catch (Exception sendError) {
-                                emitter.completeWithError(sendError);
+                                safeCompleteWithError(emitter, sendError);
+                            } finally {
+                                dispose(subscriptionRef.get());
                             }
                         },
-                        emitter::complete
+                        () -> {
+                            try {
+                                emitter.complete();
+                            } finally {
+                                dispose(subscriptionRef.get());
+                            }
+                        }
                 );
-        emitter.onCompletion(subscription::dispose);
+        subscriptionRef.set(subscription);
+        emitter.onCompletion(() -> dispose(subscriptionRef.get()));
         emitter.onTimeout(() -> {
-            subscription.dispose();
-            emitter.complete();
+            dispose(subscriptionRef.get());
+            try {
+                emitter.complete();
+            } catch (Exception e) {
+                safeCompleteWithError(emitter, e);
+            }
         });
-        emitter.onError(error -> subscription.dispose());
+        emitter.onError(error -> {
+            dispose(subscriptionRef.get());
+            safeCompleteWithError(emitter, error);
+        });
         return emitter;
     }
 
@@ -78,6 +104,20 @@ public class AiInsightController {
                     .data(event));
         } catch (IOException e) {
             throw new IllegalStateException("Failed to write telemetry insight SSE event", e);
+        }
+    }
+
+    private void dispose(Disposable subscription) {
+        if (subscription != null && !subscription.isDisposed()) {
+            subscription.dispose();
+        }
+    }
+
+    private void safeCompleteWithError(SseEmitter emitter, Throwable error) {
+        try {
+            emitter.completeWithError(error);
+        } catch (Exception e) {
+            log.debug("Failed to complete SSE emitter with error: {}", e.getMessage());
         }
     }
 

@@ -112,7 +112,8 @@ public class DashboardInsightService {
             if (lastParsed != null) {
                 throw new IllegalStateException(message);
             }
-            throw new IllegalStateException(message, lastException);
+            throw new IllegalStateException(message,
+                    lastException != null ? lastException : new IllegalStateException("All dashboard insight attempts failed"));
         } catch (Exception e) {
             long latency = System.currentTimeMillis() - start;
             log.error("Dashboard insight failed", e);
@@ -136,7 +137,11 @@ public class DashboardInsightService {
             if (base64.contains(",")) {
                 base64 = base64.substring(base64.indexOf(",") + 1);
             }
-            return Base64.getDecoder().decode(base64);
+            try {
+                return Base64.getDecoder().decode(base64);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Invalid base64 dashboard image data", e);
+            }
         }
         return screenshotService.captureDashboardPng(authorizationHeader, user);
     }
@@ -283,7 +288,7 @@ public class DashboardInsightService {
         if (!StringUtils.hasText(raw)) {
             return ValidationIssue.EMPTY_OUTPUT;
         }
-        if (looksTruncatedJson(raw)) {
+        if (AiJsonUtils.looksTruncatedJson(raw)) {
             return ValidationIssue.TRUNCATED_JSON;
         }
         if (response == null || !StringUtils.hasText(response.getSummary())) {
@@ -326,67 +331,11 @@ public class DashboardInsightService {
     }
 
     private String extractJsonObject(String raw) {
-        String json = stripFence(raw);
+        String json = AiJsonUtils.stripFence(raw);
         int start = json.indexOf('{');
         int end = json.lastIndexOf('}');
         if (start >= 0 && end > start) {
             json = json.substring(start, end + 1);
-        }
-        return json.trim();
-    }
-
-    private boolean looksTruncatedJson(String raw) {
-        String json = stripFence(raw);
-        if (!json.startsWith("{")) {
-            return false;
-        }
-        if (!json.endsWith("}")) {
-            return true;
-        }
-        int depth = 0;
-        boolean inString = false;
-        boolean escaped = false;
-        for (int i = 0; i < json.length(); i++) {
-            char c = json.charAt(i);
-            if (escaped) {
-                escaped = false;
-                continue;
-            }
-            if (c == '\\') {
-                escaped = true;
-                continue;
-            }
-            if (c == '"') {
-                inString = !inString;
-                continue;
-            }
-            if (inString) {
-                continue;
-            }
-            if (c == '{') {
-                depth++;
-            } else if (c == '}') {
-                depth--;
-            }
-            if (depth < 0) {
-                return true;
-            }
-        }
-        return depth != 0 || inString;
-    }
-
-    private String stripFence(String raw) {
-        if (raw == null) {
-            return "";
-        }
-        String json = raw.trim();
-        if (json.startsWith("```json")) {
-            json = json.substring(7);
-        } else if (json.startsWith("```")) {
-            json = json.substring(3);
-        }
-        if (json.endsWith("```")) {
-            json = json.substring(0, json.length() - 3);
         }
         return json.trim();
     }
@@ -419,7 +368,7 @@ public class DashboardInsightService {
     }
 
     private static String truncate(String s, int maxLen) {
-        if (s == null) return null;
+        if (s == null) return "";
         return s.length() <= maxLen ? s : s.substring(0, maxLen);
     }
 
@@ -428,8 +377,7 @@ public class DashboardInsightService {
         EMPTY_OUTPUT("空内容"),
         TRUNCATED_JSON("JSON 截断或未闭合"),
         UNKNOWN_SEVERITY("severity 缺失或非法"),
-        INVALID_SCHEMA("schema 字段缺失或类型不正确"),
-        MODEL_ERROR("模型调用异常");
+        INVALID_SCHEMA("schema 字段缺失或类型不正确");
 
         private final String label;
 
