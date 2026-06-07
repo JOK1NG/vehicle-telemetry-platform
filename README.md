@@ -1,14 +1,16 @@
 # vehicle-telemetry-platform
 
-车辆实时监控与轨迹回放平台，用于熟悉 React + TypeScript + Spring Boot 后台业务开发。当前只做 MVP：工程初始化、登录与车辆台账、车辆模拟与实时监控。
+车辆实时监控与轨迹回放平台，用于熟悉 React + TypeScript + Spring Boot 后台业务开发。
 
-## MVP 范围
+当前已实现范围：
 
-- M0：前后端工程初始化，Docker Compose 启动 EMQX、TimescaleDB/PostGIS、Redis。
-- M1：登录、JWT、RBAC、车辆台账 CRUD、前端车辆列表。
-- M2：车辆模拟器、MQTT 数据接入、Redis 实时态、WebSocket/STOMP 推送、高德地图多车实时显示。
+- **M0**：前后端工程初始化，Docker Compose 启动 EMQX、TimescaleDB/PostGIS、Redis。
+- **M1**：登录、JWT、RBAC、车辆台账 CRUD、前端车辆列表。
+- **M2**：车辆模拟器、MQTT 数据接入、Redis 实时态、WebSocket/STOMP 推送、高德地图多车实时显示。
+- **M3**：历史轨迹回放（Time-based 抽稀）、AI 遥测诊断（流式/非流式）、AI 大屏解读。
+- **M4**：告警系统（超速/低电量/故障码）、地理围栏（PostGIS Polygon 判读）。
 
-暂不纳入：历史轨迹回放、地理围栏、Kafka、轨迹抽稀、多车压测、CI/CD、复杂报表、复杂 ECharts 大屏。
+仍待实现：Kafka 异步告警事件流、道格拉斯-普克轨迹抽稀、多车压测、复杂报表、复杂 ECharts 大屏。
 
 ## 目录结构
 
@@ -17,7 +19,7 @@
 ├── backend/             # Spring Boot 后端
 ├── frontend/            # React 18 + TypeScript + Vite + Tailwind v4 前端
 ├── simulator/           # 车辆遥测模拟器（独立 Spring Boot 进程，发布 MQTT telemetry）
-├── docker/init-db/      # 本地数据库初始化脚本
+├── docker/              # Docker 相关配置与数据库初始化脚本
 ├── docs/                # 设计文档与 MVP 实现契约
 ├── docker-compose.yml   # 本地中间件
 ├── .env.example         # 唯一入仓的环境变量模板
@@ -107,7 +109,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=local
 - `curl http://localhost:8081/health` 应返回 `vehicle-telemetry-backend is running`
 - `curl http://localhost:8081/actuator/health` 应返回 `{"status":"UP"}`
 - `curl http://localhost:8081/api/ai/health` 应返回 AI 配置状态（无需认证）
-- 首次启动 Flyway 会自动执行 `db/migration/V1__init_schema.sql` ~ `V4__seed_demo_vehicles.sql`
+- 首次启动 Flyway 会自动执行 `db/migration/V1__init_schema.sql` ~ `V7__polygon_to_text.sql`（含 AI 基础设施、告警与地理围栏表）
 - 后端 `local` profile 默认启用**内置车辆模拟器**，启动后约 5 秒开始向 MQTT 发布遥测
 
 > **默认账号（Flyway 迁移脚本预置）**
@@ -132,6 +134,10 @@ npm run dev
 - 使用 `admin` / `admin123` 登录后应进入「车辆列表」
 - 使用 `viewer` / `viewer123` 登录后也能查看车辆列表，但无新增/编辑/删除按钮
 - 左侧菜单「监控大屏」配置高德 Key 后应能加载高德地图并显示车辆标记；未配置 Key 时会显示提示，但登录、车辆列表与实时 WebSocket 链路仍可验证
+- 左侧菜单「轨迹回放」可选择车辆与时间范围，拖动时间轴回放历史轨迹
+- 左侧菜单「告警中心」可查看实时告警列表与告警详情，顶部 AlertBell 会显示未读告警数
+- 左侧菜单「地理围栏」可查看、新增、编辑、删除围栏（ADMIN 权限）
+- 车辆列表每行「AI 诊断」按钮可调起流式 AI 遥测分析对话框
 
 开发期 `/api/*` 与 `/ws` 会通过 Vite 代理转发到 `http://localhost:8081`。
 
@@ -143,6 +149,17 @@ npm run dev
 > VITE_AMAP_SECURITY_JS_CODE=你的安全密钥
 > ```
 > 未配置时监控大屏会提示需要配置 `VITE_AMAP_KEY`，但车辆列表、登录、WebSocket 仍可正常验证。
+>
+> **AI 配置**
+>
+> 根目录 `.env` 已包含 AI 相关变量模板：
+> ```bash
+> AI_CHAT_PROVIDER=stepfun          # 或 qwen / openai
+> AI_CHAT_API_KEY=your_api_key_here
+> AI_CHAT_BASE_URL=https://api.stepfun.com/step_plan
+> AI_CHAT_MODEL=step-3.7-flash
+> ```
+> 配置后 `GET /api/ai/health` 返回 `UP`，车辆列表「AI 诊断」与监控大屏「AI 解读」按钮可用。未配置时 AI 功能提示 `DOWN`，但不影响核心车辆监控链路。
 
 ### 5. 验证实时链路（内置模拟器）
 
@@ -229,14 +246,16 @@ mvn spring-boot:run
 | 高德地图多车实时显示 | ✅ 已验证 | 前端 Dashboard 订阅并渲染标记 |
 | AI 遥测诊断 | ✅ 已验证 | 流式 SSE + 非流式双模式，支持 retry |
 | AI 大屏解读 | ✅ 已验证 | 截图 + 多模态 / 文本回退 |
-| 历史轨迹回放 | ❌ 不在 MVP | 未实现 |
-| 地理围栏 | ❌ 不在 MVP | PostGIS 已就绪，但业务未实现 |
-| Kafka | ❌ 不在 MVP | 未引入 |
-| 轨迹抽稀 / 压测 | ❌ 不在 MVP | 未实现 |
+| 历史轨迹回放 | ✅ 已验证 | Time-based 抽稀，7 天窗口，支持播放/暂停/倍速 |
+| 告警系统 | ✅ 已验证 | 超速 / 低电量 / 故障码 / 围栏闯入，WebSocket 实时推送 |
+| 地理围栏 | ✅ 已验证 | PostGIS Polygon 存储，围栏绑定/解绑车辆，出入判定 |
+| Kafka | ❌ 未引入 | M5+ 规划中 |
+| 道格拉斯-普克抽稀 / 压测 | ❌ 未实现 | M3+ 规划中 |
 | Stage A CI | ✅ 已验证 | GitHub Actions 执行前端 `npm ci`、`npx tsc -b`、`npm run build` |
-| 复杂报表 / ECharts 大屏 | ❌ 不在 MVP | 未实现 |
+| 复杂报表 / ECharts 大屏 | ❌ 未实现 | 未引入 |
 
 ## 项目文档
 
 - `docs/车辆实时监控与轨迹回放平台-项目设计文档.md`
 - `docs/mvp-00-implementation-contract.md`
+- `docs/ai-integration-plan-for-agents.md`

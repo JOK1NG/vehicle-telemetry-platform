@@ -188,6 +188,47 @@ GET /api/vehicles/snapshot
 
 **数据源**：Redis `vehicle:rt:{id}` 哈希全部字段 + `vehicle:online` 集合。
 
+### 4.2 历史轨迹查询（M3+ 已落地）
+
+```
+GET /api/vehicles/{id}/trajectory?start=&end=&maxPoints=
+```
+
+- `start` / `end`：ISO 8601 时间字符串
+- `maxPoints`：默认 2000，上限 5000
+- 数据量大时后端自动按时间均匀抽稀（Time-based downsampling）
+- 单次查询时间窗口不能超过 7 天
+
+### 4.3 AI 诊断接口（M3+ 已落地）
+
+```
+GET  /api/ai/health                        # 配置探测（无需认证）
+POST /api/ai/ping                          # 最小连通性测试（需认证）
+POST /api/ai/insights/telemetry            # 遥测文本诊断（非流式）
+POST /api/ai/insights/telemetry/stream     # 遥测文本诊断（SSE 流式）
+POST /api/ai/insights/dashboard           # Dashboard 视觉解读（截图 + 多模态/文本回退）
+```
+
+### 4.4 告警接口（M4+ 已落地）
+
+```
+GET /api/alerts                     # 告警分页列表（支持按车辆、级别、时间范围筛选）
+GET /api/alerts/rules               # 告警规则列表
+```
+
+告警事件通过 WebSocket `/topic/alerts` 实时推送到前端。
+
+### 4.5 地理围栏接口（M4+ 已落地）
+
+```
+GET    /api/geofences               # 围栏列表
+POST   /api/geofences               # 新增围栏
+PUT    /api/geofences/{id}          # 修改围栏
+DELETE /api/geofences/{id}          # 删除围栏（需二次确认）
+POST   /api/geofences/{id}/bind     # 绑定车辆到围栏
+POST   /api/geofences/{id}/unbind   # 解绑车辆
+```
+
 ---
 
 ## 5. 高德地图 & 坐标系
@@ -262,7 +303,7 @@ VITE_AMAP_SECURITY_JS_CODE=你的安全密钥
 1. JDK 17 + Spring Boot 3.5.14 + Maven 3.9+，后端端口 **8081**
 2. 前端 React 18 + TypeScript + Zustand + Tailwind CSS 4
 3. TimescaleDB-HA（含 PostGIS）而非纯 TimescaleDB
-4. Flyway 做 DB 迁移（V1~V4 核心表 + V5 AI 基础设施）
+4. Flyway 做 DB 迁移（V1~V4 核心表 + V5 AI 基础设施 + V6 告警与地理围栏 + V7 Polygon 文本修复）
 5. MQTT topic 用自增 vehicleId（MVP 简化）
 6. 全链路 GCJ-02 坐标系，模拟器源头生成
 7. RBAC 两个角色：ADMIN / VIEWER
@@ -271,11 +312,19 @@ VITE_AMAP_SECURITY_JS_CODE=你的安全密钥
 10. JWT 校验：`sub`=userId, `username`, `role`（jjwt 0.12.6），**`JWT_SECRET` 必须配置，无回退默认值**
 11. AI 模块（`modules.ai`）已落地：Spring AI + Playwright，支持 telemetry insight（流式/非流式）与 dashboard multimodal insight
 
-### ❌ 不在 MVP 范围
+### ⚠️ 原 MVP 边界外已落地
 
-- 历史轨迹回放、地理围栏、Kafka、轨迹抽稀、多车压测（设计文档 M3-M5）
-- 告警引擎（`alert` 表已创建但引擎未实现）
+以下功能原不在 M0-M2 MVP 范围内，但已通过后续迭代实现：
+
+- **历史轨迹回放**：`GET /api/vehicles/{id}/trajectory`（Time-based downsampling，7 天窗口）
+- **告警系统**：`AlertEngine` 实时判定超速/低电量/故障码；`AlertService` 查询与分页；WebSocket `/topic/alerts` 推送
+- **地理围栏**：`GeofenceController` CRUD + 车辆绑定；`GeofenceEvaluator` PostGIS Polygon 出入判定
+- **前端扩展页面**：告警中心 (`/alerts`)、轨迹回放 (`/trajectory`)、地理围栏 (`/geofences`)
+
+### ❌ 仍待实现
+
+- Kafka 异步告警事件流、道格拉斯-普克轨迹抽稀、多车压测
 - 角色管理 UI
 - `alert:latest` Redis 键
-- 前端 ECharts 大屏、告警页面、轨迹回放页面
-- CI/CD（仅前端 typecheck+build CI 已配置）
+- 前端 ECharts 大屏
+- 后端 CI/CD（仅前端 typecheck+build CI 已配置）

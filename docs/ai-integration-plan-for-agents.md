@@ -1,17 +1,17 @@
-# Vehicle Telemetry Platform AI 接入计划（Agent 执行版）
+# Vehicle Telemetry Platform AI 接入方案与落地记录
 
 ## 文档目标
 
-本文档面向后续协作 Agent，目标是在现有 `vehicle-telemetry-platform` 基础上，规划一套可分阶段落地的 AI 接入方案。重点不局限于当前 MVP，而是基于现有系统骨架向"智能车联网分析平台"扩展。本文强调：模块边界、接入优先级、可执行步骤、接口约定、数据流、风险控制与多模态能力落点。
+本文档记录 `vehicle-telemetry-platform` 已落地的 AI 接入方案，供后续协作 Agent 了解模块边界、接口约定、数据流与扩展点。本文也保留未来阶段（Phase 3+）的规划方向。
 
 ## 已知项目基线
 
-- 后端基于 Spring Boot 3.4.x、Java 17，使用 Maven 管理依赖。
-- 当前系统包含认证、车辆、实时数据、MQTT、WebSocket、模拟器等核心能力，整体属于"车辆遥测平台"架构。
+- 后端基于 Spring Boot **3.5.14**、Java 17，使用 Maven 管理依赖。
+- 当前系统包含认证、车辆、实时数据、MQTT、WebSocket、模拟器、告警、地理围栏、AI 诊断等核心能力，整体属于"智能车联网分析平台"架构。
 - 数据流主干：车辆或模拟器上报数据，经 MQTT 进入后端，经实时处理后落库与缓存，再通过 WebSocket 推送到前端监控界面。
-- 系统已具备 PostgreSQL、Redis、MQTT、前端可视化面板等 AI 接入所需的上下文基础。
+- 系统已具备 PostgreSQL、Redis、MQTT、前端可视化面板、AI 模块等完整上下文。
 
-> 注：落地时 Agent 需先再次核对本地仓库代码与本文是否一致，再执行实施。
+> 注：本文档中 Phase 0 ~ Phase 2 已完全落地；Phase 3+ 为待规划扩展方向。
 
 ## 总体设计原则
 
@@ -22,11 +22,11 @@ AI 接入不应作为一个孤立聊天框存在，而应作为系统内生能�
 3. **诊断决策层**：故障排查、风险解释、工单生成时。
 4. **运维分析层**：平台自身的监控、日志、链路诊断时。
 
-因此建议新增独立的 `modules.ai` 模块，作为统一 AI 编排层，而不是把 AI 逻辑散落到 `vehicle`、`realtime`、`mqtt` 等模块中。
+系统已新增独立的 `modules.ai` 模块，作为统一 AI 编排层，未把 AI 逻辑散落到 `vehicle`、`realtime`、`mqtt` 等模块中。
 
-## 推荐目标架构
+## 实际落地架构
 
-建议在现有后端中引入一个新的领域模块：
+后端已落地的 `modules.ai` 模块结构如下：
 
 \`\`\`text
 com.iov.platform.modules.ai
@@ -87,20 +87,20 @@ public interface MultimodalModelClient {
 
 ## 分阶段实施计划
 
-### Phase 0：基础设施接入
+### Phase 0：基础设施接入（✅ 已落地）
 
-**目标**：先让系统具备"可调用 AI"的最小能力，但不改动现有核心业务路径。
+**目标**：让系统具备"可调用 AI"的最小能力，不改动现有核心业务路径。
 
-**任务**：
+**已完成的任务**：
 
 1. 引入 Spring AI 相关依赖（BOM + starter）。
 2. 建立 `modules.ai` 模块。
-3. 完成统一模型配置。
-4. 增加 AI 调用日志表 `ai_call_log` 与异步任务表 `ai_task`。
+3. 完成统一模型配置（`AiChatProperties` + `SpringAiChatConfiguration`）。
+4. 增加 AI 调用日志表 `ai_call_log` 与异步任务表 `ai_task`（Flyway V5）。
 5. 提供配置探测接口：`GET /api/ai/health`（无需认证，不消耗 API 配额）。
 6. 提供最小测试接口：`POST /api/ai/ping`（**需认证**，仅用于带 token 的连通性验证）。
 
-**建议新增表**：
+**已新增的表**：
 
 \`\`\`sql
 create table ai_call_log (
@@ -118,17 +118,17 @@ create table ai_call_log (
 );
 \`\`\`
 
-**验收标准**：
-- `GET /api/ai/health` 可匿名访问，返回配置状态（`UP`/`DOWN`）。
-- `POST /api/ai/ping` 需携带有效 Bearer token，调用模型并返回文本。
-- 所有模型调用均记录到 `ai_call_log`。
-- 不影响现有 MQTT / WS / realtime 流程。
+**验收状态**：
+- `GET /api/ai/health` 可匿名访问，返回配置状态（`UP`/`DOWN`）。✅
+- `POST /api/ai/ping` 需携带有效 Bearer token，调用模型并返回文本。✅
+- 所有模型调用均记录到 `ai_call_log`。✅
+- 不影响现有 MQTT / WS / realtime 流程。✅
 
 ---
 
-### Phase 1：文本型 AI 能力
+### Phase 1：文本型 AI 能力（✅ 已落地）
 
-**目标**：先接入最稳妥的文本能力，直接消费遥测 JSON 与结构化统计，建立 AI 分析基础。
+**目标**：接入文本能力，直接消费遥测 JSON 与结构化统计，建立 AI 分析基础。
 
 **场景 1：异常遥测解释**
 
@@ -177,21 +177,22 @@ POST /api/ai/insights/telemetry
 }
 \`\`\`
 
-**Agent 执行要求**：
+**已实现要点**：
 
-- 复用现有 `vehicle`、`realtime` 查询服务，不重复造数据访问层。
-- Prompt 中必须注入"只根据给定数据回答，不得臆测"的约束。
-- 输出结果应拆分为：`summary`、`findings`、`recommendations`、`severity` 四段，方便前端渲染。
+- 复用现有 `vehicle`、`realtime`、`alert` 查询服务，未重复造数据访问层。✅
+- Prompt 中注入"只根据给定数据回答，不得臆测"的约束。✅
+- 输出结果拆分为：`summary`、`findings`、`recommendations`、`severity` 四段，方便前端渲染。✅
+- 前端车辆列表提供「AI 诊断」按钮，调起流式 SSE 或非流式分析对话框。✅
 
 ---
 
-### Phase 2：Dashboard 视觉解读（第一批多模态）
+### Phase 2：Dashboard 视觉解读（第一批多模态）（✅ 已落地）
 
 **目标**：让模型"看懂"前端 Dashboard 截图，而不仅是看 JSON 数据。
 
 **核心价值**：模型可以从整体视角观察：多张曲线图之间的关系、地图轨迹与异常时间点的对应、告警列表与统计卡片的组合呈现。这类信息在纯 JSON 中往往不直观，但在截图里容易被模型整体理解。
 
-**推荐交互**：前端在监控页加入按钮：「AI 解读当前页面」或「帮我分析本页异常」。
+**实际交互**：前端监控页已加入「AI 解读当前页面」按钮（`AiInsightPanel` 组件）。
 
 用户点击后：
 
@@ -223,20 +224,20 @@ POST /api/ai/insights/dashboard
 }
 \`\`\`
 
-**Agent 执行要求**：
+**已实现要点**：
 
 - 前端截图优先，不在后端重绘图表。
 - Base64 图像可落到对象存储或临时文件，再喂给模型。
 - 请求中保留结构化摘要，避免模型完全依赖图像猜测数值。
 - 若图片过大，前端先压缩到适合推理的尺寸。
 
-**输出建议**：页面摘要、主要异常区域、趋势解释、建议下一步查看的数据。
+**实际输出**：页面摘要、主要异常区域、趋势解释、建议下一步查看的数据。
 
 **适合写入前端的 UI 形态**：右侧 AI 分析抽屉；卡片式结论 + 可展开详细解释；一键生成日报摘要。
 
 ---
 
-### Phase 3：仪表盘/故障灯照片诊断（高价值多模态）
+### Phase 3：仪表盘/故障灯照片诊断（高价值多模态）（⚪ 规划中）
 
 **目标**：让司机或运维上传车辆仪表盘照片，由模型识别故障灯，再结合遥测与故障码生成诊断结果。
 
@@ -263,7 +264,7 @@ POST /api/ai/diagnosis/cluster-photo
 3. 联合推理：把图像识别结果 + 结构化数据一起交给模型二次判断。
 4. 输出标准化诊断结果。
 
-**Agent 执行要求**：
+**实现要求**：
 
 - 拆成两个逻辑阶段，即使最终都由同一个模型完成，也要在代码结构上区分：`extractVisualWarnings()` 和 `buildJointDiagnosis()`。
 - 响应中必须包含 `riskLevel` 字段，值限定为 `LOW` / `MEDIUM` / `HIGH` / `CRITICAL`。
@@ -272,7 +273,7 @@ POST /api/ai/diagnosis/cluster-photo
 
 ---
 
-### Phase 4：车辆外观检查与损伤识别
+### Phase 4：车辆外观检查与损伤识别（⚪ 规划中）
 
 **目标**：从车队管理角度扩展系统边界，支持"静态检查"。
 
@@ -310,7 +311,7 @@ create table vehicle_inspection_damage (
 );
 \`\`\`
 
-**Agent 执行要求**：
+**实现要求**：
 
 - 先做"文本描述型识别"，不要一上来做复杂框选标注。
 - 图片存储与数据库解耦，数据库仅保存 URL / key。
@@ -318,7 +319,7 @@ create table vehicle_inspection_damage (
 
 ---
 
-### Phase 5：驾驶行为教练（视频关键帧 / 图像序列）
+### Phase 5：驾驶行为教练（视频关键帧 / 图像序列）（⚪ 规划中）
 
 **目标**：利用多模态模型对驾驶行为进行更"人类化"的解释。
 
@@ -326,7 +327,7 @@ create table vehicle_inspection_damage (
 
 **输出**：危险行为说明、驾驶环境描述、风险解释、驾驶建议、驾驶评分（可由规则层二次映射）。
 
-**Agent 执行要求**：
+**实现要求**：
 
 - 不让模型直接输出最终分数，可先输出分类标签，再由本地规则映射成分数。
 - 关键帧应与对应时间点的遥测对齐。
@@ -334,7 +335,7 @@ create table vehicle_inspection_damage (
 
 ---
 
-### Phase 6：平台运维 AI 助手
+### Phase 6：平台运维 AI 助手（⚪ 规划中）
 
 **目标**：不仅让 AI 看车，也让 AI 看平台本身。
 
