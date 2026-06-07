@@ -78,16 +78,19 @@ public class TrajectoryController {
                             "ORDER BY time ASC",
                     id, startTs, endTs);
         } else {
-            // Time-based 抽稀：用 row_number() 按时间均匀取 limit 个点
+            // Time-based 抽稀：先把全量点均匀分成 limit 个桶，再从每个桶保留 1 个点
             rows = jdbcTemplate.queryForList(
-                    "SELECT * FROM ( " +
-                            "  SELECT time, lng, lat, speed, heading, battery, " +
-                            "         ntile(?) OVER (ORDER BY time ASC) AS bucket " +
-                            "  FROM telemetry " +
-                            "  WHERE vehicle_id = ? AND time BETWEEN ?::timestamptz AND ?::timestamptz " +
-                            ") t WHERE bucket <= ? ORDER BY time ASC",
-                    limit, id, startTs, endTs, limit);
-            // ntile 会给每行打 1..limit 的 bucket 编号；这里保留 bucket=1..limit 共 limit 行
+                    "SELECT time, lng, lat, speed, heading, battery FROM ( " +
+                            "  SELECT time, lng, lat, speed, heading, battery, bucket, " +
+                            "         row_number() OVER (PARTITION BY bucket ORDER BY time ASC) AS rn " +
+                            "  FROM ( " +
+                            "    SELECT time, lng, lat, speed, heading, battery, " +
+                            "           ntile(?) OVER (ORDER BY time ASC) AS bucket " +
+                            "    FROM telemetry " +
+                            "    WHERE vehicle_id = ? AND time BETWEEN ?::timestamptz AND ?::timestamptz " +
+                            "  ) tiled " +
+                            ") sampled WHERE rn = 1 ORDER BY time ASC",
+                    limit, id, startTs, endTs);
         }
 
         // 格式化：time 序列化为 ISO 字符串
