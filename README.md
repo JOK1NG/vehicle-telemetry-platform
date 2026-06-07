@@ -44,11 +44,11 @@
 cp .env.example .env
 ```
 
-`.env` 只用于本地开发，不入仓。前端在 `frontend/` 目录运行 Vite 时，可复制同一份模板：
+`.env` 只用于本地开发，不入仓。前端在 `frontend/` 目录运行 Vite 时，可复制前端模板：
 
 ```bash
 cd frontend
-cp ../.env.example .env
+cp .env.example .env.local
 ```
 
 高德地图变量遵循契约命名：
@@ -101,9 +101,14 @@ java -version
 如果本机有多个 JDK，请先切到 JDK 17，再运行 Maven。
 
 ```bash
-cd backend
-mvn spring-boot:run -Dspring-boot.run.profiles=local
+# 方式一：从 backend/ 目录启动
+(cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=local)
+
+# 方式二：从项目根目录启动
+mvn -f backend/pom.xml spring-boot:run -Dspring-boot.run.profiles=local
 ```
+
+后端会自动读取当前目录的 `.env` 或上一级目录的 `.env`。也就是说，从项目根目录或 `backend/` 目录启动都不需要再手动执行 `source .env`。
 
 验证点：
 - `curl http://localhost:8081/health` 应返回 `vehicle-telemetry-backend is running`
