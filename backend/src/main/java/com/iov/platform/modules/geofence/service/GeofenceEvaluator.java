@@ -52,6 +52,10 @@ public class GeofenceEvaluator {
         return result;
     }
 
+    public boolean appliesToVehicle(Long geofenceId, Long vehicleId) {
+        return cache.appliesToVehicle(geofenceId, vehicleId);
+    }
+
     public String getGeofenceName(Long id) {
         return cache.getName(id);
     }
