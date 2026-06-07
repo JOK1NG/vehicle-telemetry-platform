@@ -38,7 +38,7 @@ jobs:
           cache: 'maven'
 
       - name: Compile
-        run: ./mvnw compile -B
+        run: mvn compile -B
 
       - name: Run tests
-        run: ./mvnw test -B
+        run: mvn test -B
